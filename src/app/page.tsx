@@ -14,7 +14,7 @@ export default async function Home() {
   const { data: encountersData } = await supabase
     .from("encounters")
     .select(
-      "id, session_id, location, pokemon_a, nickname_a, ability_a, pokemon_b, nickname_b, ability_b, status, is_in_party, created_at",
+      "id, session_id, location, pokemon_a, nickname_a, ability_a, pokemon_b, nickname_b, ability_b, status, is_in_party, order_index, created_at",
     )
     .order("created_at", { ascending: false });
 

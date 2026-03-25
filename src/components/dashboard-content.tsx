@@ -12,8 +12,9 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
+import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Shield, Swords, Trophy, Users } from "lucide-react";
+import { GripVertical, Link2, Shield, Trash2, Trophy, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { AddEncounterModal } from "@/components/add-encounter-modal";
@@ -36,38 +37,154 @@ type DashboardContentProps = {
 const PARTY_DROPZONE_ID = "party-dropzone";
 const BOX_DROPZONE_ID = "box-dropzone";
 
+type PokemonIntel = {
+  types: string[];
+  stats: Array<{ label: string; value: number }>;
+};
+
+type PairIntel = {
+  pokemonA: PokemonIntel;
+  pokemonB: PokemonIntel;
+};
+
+const typeColorMap: Record<string, string> = {
+  normal: "bg-zinc-500/30 text-zinc-200",
+  fire: "bg-red-500/30 text-red-200",
+  water: "bg-blue-500/30 text-blue-200",
+  electric: "bg-yellow-500/30 text-yellow-200",
+  grass: "bg-green-500/30 text-green-200",
+  ice: "bg-cyan-500/30 text-cyan-200",
+  fighting: "bg-orange-500/30 text-orange-200",
+  poison: "bg-purple-500/30 text-purple-200",
+  ground: "bg-amber-600/30 text-amber-200",
+  flying: "bg-sky-500/30 text-sky-200",
+  psychic: "bg-pink-500/30 text-pink-200",
+  bug: "bg-lime-600/30 text-lime-200",
+  rock: "bg-stone-500/30 text-stone-200",
+  ghost: "bg-violet-500/30 text-violet-200",
+  dragon: "bg-indigo-500/30 text-indigo-200",
+  dark: "bg-slate-600/40 text-slate-200",
+  steel: "bg-gray-500/30 text-gray-200",
+  fairy: "bg-fuchsia-500/30 text-fuchsia-200",
+};
+
 type DroppableGridProps = {
   id: string;
   className: string;
-  children: React.ReactNode;
+  children: React.ReactNode | ((isOver: boolean) => React.ReactNode);
 };
 
 function DroppableGrid({ id, className, children }: DroppableGridProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
+
+  const renderedChildren = typeof children === "function" ? children(isOver) : children;
 
   return (
     <div
       ref={setNodeRef}
       className={`${className} ${isOver ? "ring-1 ring-emerald-400 ring-offset-2 ring-offset-slate-950" : ""}`}
     >
-      {children}
+      {renderedChildren}
     </div>
   );
 }
 
-type DraggableEncounterCardProps = {
+type EncounterCardProps = {
   encounter: EncounterRow;
   actionLabel: "Move to Party" | "Move to Box";
   onAction: () => void;
+  onRelease: () => void;
+  onSelect: () => void;
   isActionPending: boolean;
+  isReleasePending: boolean;
+  isSelected: boolean;
 };
+
+type EncounterCardBodyProps = {
+  encounter: EncounterRow;
+  actionLabel: "Move to Party" | "Move to Box";
+  onAction: () => void;
+  onRelease: () => void;
+  isActionPending: boolean;
+  isReleasePending: boolean;
+  dragHandle: React.ReactNode;
+};
+
+function EncounterCardBody({
+  encounter,
+  actionLabel,
+  onAction,
+  onRelease,
+  isActionPending,
+  isReleasePending,
+  dragHandle,
+}: EncounterCardBodyProps) {
+  return (
+    <div className="flex h-full min-h-[260px] flex-col p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[11px] text-emerald-300">
+          {encounter.location ?? "Unknown"}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onRelease();
+            }}
+            disabled={isReleasePending}
+            className="inline-flex items-center gap-1 rounded-md border border-red-500/30 px-2 py-1 text-xs text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Release pair"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+          {dragHandle}
+        </div>
+      </div>
+
+      <div className="flex flex-1 items-start justify-between gap-2">
+        <PokemonNameplate
+          pokemonName={encounter.pokemon_a ?? "Unknown"}
+          nickname={encounter.nickname_a}
+          ability={encounter.ability_a}
+        />
+        <div className="grid place-items-center pt-7 text-slate-500">
+          <Link2 className="h-4 w-4" />
+        </div>
+        <PokemonNameplate
+          pokemonName={encounter.pokemon_b ?? "Unknown"}
+          nickname={encounter.nickname_b}
+          ability={encounter.ability_b}
+        />
+      </div>
+      {/* `mt-auto` in a `flex-col` container consumes remaining vertical space, pinning this row to the bottom. */}
+      <div className="mt-auto pt-2">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onAction();
+          }}
+          disabled={isActionPending}
+          className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {actionLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function DraggableEncounterCard({
   encounter,
   actionLabel,
   onAction,
+  onRelease,
+  onSelect,
   isActionPending,
-}: DraggableEncounterCardProps) {
+  isReleasePending,
+  isSelected,
+}: EncounterCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: encounter.id,
     data: { inParty: encounter.is_in_party },
@@ -77,42 +194,77 @@ function DraggableEncounterCard({
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition: "transform 160ms ease" }}
-      className={`rounded-lg border border-emerald-500/20 bg-slate-950/70 px-3 py-2 ${isDragging ? "opacity-50 scale-105" : ""}`}
+      onClick={onSelect}
+      className={`h-full min-h-[260px] rounded-lg border border-emerald-500/20 bg-slate-950/70 ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isDragging ? "opacity-50 scale-105" : ""}`}
     >
-      <div className="mb-2 flex items-center justify-between">
-        <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-xs text-emerald-300">
-          {encounter.location ?? "Unknown"}
-        </span>
-        <button
-          type="button"
-          {...listeners}
-          {...attributes}
-          className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 px-2 py-1 text-xs text-slate-300 hover:bg-emerald-500/10"
-          aria-label="Drag encounter card"
-        >
-          <GripVertical className="h-3 w-3" />
-          Drag
-        </button>
-      </div>
+      <EncounterCardBody
+        encounter={encounter}
+        actionLabel={actionLabel}
+        onAction={onAction}
+        onRelease={onRelease}
+        isActionPending={isActionPending}
+        isReleasePending={isReleasePending}
+        dragHandle={
+          <button
+            type="button"
+            {...listeners}
+            {...attributes}
+            onClick={(event) => event.stopPropagation()}
+            className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 px-2 py-1 text-xs text-slate-300 hover:bg-emerald-500/10"
+            aria-label="Drag encounter card"
+          >
+            <GripVertical className="h-3 w-3" />
+            Drag
+          </button>
+        }
+      />
+    </div>
+  );
+}
 
-      <div className="flex items-center justify-between gap-2">
-        <PokemonNameplate pokemonName={encounter.pokemon_a ?? "Unknown"} nickname={encounter.nickname_a} />
-        <Swords className="h-4 w-4 text-slate-500" />
-        <PokemonNameplate pokemonName={encounter.pokemon_b ?? "Unknown"} nickname={encounter.nickname_b} />
-      </div>
-      <p className="mt-2 text-xs text-slate-400">
-        {encounter.ability_a ?? "Unknown"} / {encounter.ability_b ?? "Unknown"}
-      </p>
-      <div className="mt-2">
-        <button
-          type="button"
-          onClick={onAction}
-          disabled={isActionPending}
-          className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {actionLabel}
-        </button>
-      </div>
+function SortablePartyCard({
+  encounter,
+  actionLabel,
+  onAction,
+  onRelease,
+  onSelect,
+  isActionPending,
+  isReleasePending,
+  isSelected,
+}: EncounterCardProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: encounter.id,
+    data: { inParty: true },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      onClick={onSelect}
+      className={`h-full min-h-[260px] rounded-lg border border-emerald-500/20 bg-slate-950/70 ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isDragging ? "opacity-50 scale-105" : ""}`}
+    >
+      <EncounterCardBody
+        encounter={encounter}
+        actionLabel={actionLabel}
+        onAction={onAction}
+        onRelease={onRelease}
+        isActionPending={isActionPending}
+        isReleasePending={isReleasePending}
+        dragHandle={
+          <button
+            type="button"
+            {...listeners}
+            {...attributes}
+            onClick={(event) => event.stopPropagation()}
+            className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 px-2 py-1 text-xs text-slate-300 hover:bg-emerald-500/10"
+            aria-label="Reorder party encounter card"
+          >
+            <GripVertical className="h-3 w-3" />
+            Drag
+          </button>
+        }
+      />
     </div>
   );
 }
@@ -160,6 +312,10 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingEncounterIds, setPendingEncounterIds] = useState<string[]>([]);
+  const [selectedPairId, setSelectedPairId] = useState<string | null>(null);
+  const [releasingEncounterIds, setReleasingEncounterIds] = useState<string[]>([]);
+  const [pairIntel, setPairIntel] = useState<PairIntel | null>(null);
+  const [intelLoading, setIntelLoading] = useState(false);
 
   useEffect(() => {
     const channel = supabase
@@ -187,65 +343,190 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   }, []);
 
   const aliveEncounters = encounters.filter((encounter) => encounter.status?.toLowerCase() === "alive");
+  const orderedPartyEncounters = aliveEncounters
+    .filter((encounter) => encounter.is_in_party)
+    .sort((a, b) => {
+      const aIndex = a.order_index ?? Number.MAX_SAFE_INTEGER;
+      const bIndex = b.order_index ?? Number.MAX_SAFE_INTEGER;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+      return a.created_at.localeCompare(b.created_at);
+    });
   const fallenCount = encounters.filter((encounter) => encounter.status?.toLowerCase() === "dead").length;
-  const partyCount = aliveEncounters.filter((encounter) => encounter.is_in_party).length;
-  const activeTeam = aliveEncounters.filter((encounter) => encounter.is_in_party).slice(0, 6);
+  const activeTeam = orderedPartyEncounters.slice(0, 6);
+  const partyIds = activeTeam.map((encounter) => encounter.id);
   const partySlots = Array.from({ length: 6 }, (_, index) => activeTeam[index] ?? null);
   const boxedAliveEncounters = aliveEncounters.filter((encounter) => !encounter.is_in_party);
+  const boxedIds = boxedAliveEncounters.map((encounter) => encounter.id);
   const latestLocation = encounters[0]?.location ?? "No encounters yet";
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor));
+  const selectedPair = selectedPairId ? encounters.find((encounter) => encounter.id === selectedPairId) ?? null : null;
+
+  useEffect(() => {
+    if (!selectedPairId) return;
+    const stillExists = encounters.some((encounter) => encounter.id === selectedPairId);
+    if (!stillExists) {
+      setSelectedPairId(null);
+    }
+  }, [encounters, selectedPairId]);
+
+  useEffect(() => {
+    if (!selectedPair) {
+      setPairIntel(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const fetchPokemonIntel = async (pokemonName: string): Promise<PokemonIntel> => {
+      const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${pokemonName}`, {
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Unable to fetch intel for ${pokemonName}`);
+      }
+
+      const payload = await response.json();
+      return {
+        types: payload.types.map((entry: { type: { name: string } }) => entry.type.name),
+        stats: payload.stats.map((entry: { base_stat: number; stat: { name: string } }) => ({
+          label: entry.stat.name,
+          value: entry.base_stat,
+        })),
+      };
+    };
+
+    const loadIntel = async () => {
+      try {
+        setIntelLoading(true);
+        const [pokemonA, pokemonB] = await Promise.all([
+          fetchPokemonIntel(selectedPair.pokemon_a),
+          fetchPokemonIntel(selectedPair.pokemon_b),
+        ]);
+
+        if (!controller.signal.aborted) {
+          setPairIntel({ pokemonA, pokemonB });
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setPairIntel(null);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIntelLoading(false);
+        }
+      }
+    };
+
+    void loadIntel();
+    return () => controller.abort();
+  }, [selectedPair]);
 
   /*
-  Input: Encounter id and destination flag (`true` for party, `false` for box).
-  Transformation: Optimistically updates local state, persists `is_in_party` in Supabase, and rolls back on error.
-  Output: Updated encounter placement across Live Team and PC Box sections.
+  Input: Party encounter IDs in their intended visual order + optional IDs moved to box.
+  Transformation: Rewrites local `is_in_party`/`order_index` fields so party order is compacted from top to bottom.
+  Output: Returns next encounter state with gravity/compaction applied before server confirmation.
   */
+  function applyPartyLayoutOptimistically(
+    current: EncounterRow[],
+    nextPartyIds: string[],
+    movedOutIds: string[] = [],
+  ) {
+    const orderMap = new Map(nextPartyIds.map((id, index) => [id, index]));
+    const movedOutSet = new Set(movedOutIds);
+
+    return current.map((entry) => {
+      const nextIndex = orderMap.get(entry.id);
+      if (nextIndex !== undefined) {
+        return { ...entry, is_in_party: true, order_index: nextIndex };
+      }
+
+      if (movedOutSet.has(entry.id)) {
+        return { ...entry, is_in_party: false, order_index: null };
+      }
+
+      return entry;
+    });
+  }
+
+  async function persistPartyLayout(nextPartyIds: string[], movedOutIds: string[] = []) {
+    const updates = [
+      ...nextPartyIds.map((id, index) =>
+        supabase.from("encounters").update({ is_in_party: true, order_index: index }).eq("id", id),
+      ),
+      ...movedOutIds.map((id) =>
+        supabase.from("encounters").update({ is_in_party: false, order_index: null }).eq("id", id),
+      ),
+    ];
+
+    const results = await Promise.all(updates);
+    const failed = results.find((result) => result.error)?.error;
+    if (failed) {
+      throw failed;
+    }
+  }
+
+  async function commitPartyLayout(nextPartyIds: string[], movedOutIds: string[] = []) {
+    const impactedIds = [...nextPartyIds, ...movedOutIds];
+    if (impactedIds.length === 0) return;
+
+    const previous = encounters;
+    setActionError(null);
+    setPendingEncounterIds((current) => [...new Set([...current, ...impactedIds])]);
+
+    // Use optimistic ordering first so dnd-kit animations (arrayMove) feel immediate.
+    setEncounters((current) => applyPartyLayoutOptimistically(current, nextPartyIds, movedOutIds));
+
+    try {
+      await persistPartyLayout(nextPartyIds, movedOutIds);
+    } catch (error) {
+      setEncounters(previous);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setActionError(`Failed to update party order: ${message}`);
+    } finally {
+      setPendingEncounterIds((current) => current.filter((id) => !impactedIds.includes(id)));
+    }
+  }
+
   async function moveEncounter(encounterId: string, nextInParty: boolean) {
     if (pendingEncounterIds.includes(encounterId)) return;
-
     const targetEncounter = encounters.find((entry) => entry.id === encounterId);
     if (!targetEncounter) return;
     if (targetEncounter.is_in_party === nextInParty) return;
 
-    if (nextInParty && partyCount >= 6) {
-      toast.error("Party is full!");
-      setActionError("Party is full (6). Move one pair to box first.");
+    if (nextInParty) {
+      if (partyIds.length >= 6) {
+        toast.error("Party is full!");
+        setActionError("Party is full (6). Move one pair to box first.");
+        return;
+      }
+
+      const nextPartyIds = [...partyIds, encounterId];
+      await commitPartyLayout(nextPartyIds);
       return;
     }
 
+    const compactedPartyIds = partyIds.filter((id) => id !== encounterId);
+    await commitPartyLayout(compactedPartyIds, [encounterId]);
+  }
+
+  async function releaseEncounter(encounterId: string) {
+    if (releasingEncounterIds.includes(encounterId)) return;
+    const confirmed = window.confirm("Are you sure you want to release this pair?");
+    if (!confirmed) return;
+
+    setReleasingEncounterIds((current) => [...current, encounterId]);
     setActionError(null);
-    setPendingEncounterIds((current) => [...current, encounterId]);
 
     const previous = encounters;
-    setEncounters((current) => {
-      const moved = current.find((entry) => entry.id === encounterId);
-      if (!moved) return current;
+    setEncounters((current) => current.filter((entry) => entry.id !== encounterId));
 
-      const withoutMoved = current.filter((entry) => entry.id !== encounterId);
-      const updatedMoved = { ...moved, is_in_party: nextInParty };
-
-      if (!nextInParty) {
-        return [...withoutMoved, updatedMoved];
-      }
-
-      // Append to the next available party slot by inserting after current party entries.
-      const insertIndex = withoutMoved.filter((entry) => entry.is_in_party).length;
-      const before = withoutMoved.slice(0, insertIndex);
-      const after = withoutMoved.slice(insertIndex);
-      return [...before, updatedMoved, ...after];
-    });
-
-    const { error } = await supabase
-      .from("encounters")
-      .update({ is_in_party: nextInParty })
-      .eq("id", encounterId);
-
+    const { error } = await supabase.from("encounters").delete().eq("id", encounterId);
     if (error) {
       setEncounters(previous);
-      setActionError(`Failed to move encounter: ${error.message}`);
+      setActionError(`Failed to release pair: ${error.message}`);
     }
 
-    setPendingEncounterIds((current) => current.filter((id) => id !== encounterId));
+    setReleasingEncounterIds((current) => current.filter((id) => id !== encounterId));
   }
 
   /*
@@ -257,15 +538,41 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
 
-    const targetIsParty =
-      over.id === PARTY_DROPZONE_ID ? true : over.id === BOX_DROPZONE_ID ? false : null;
-    if (targetIsParty === null) return;
+    const activeIsParty = partyIds.includes(activeId);
+    const overIsParty = overId === PARTY_DROPZONE_ID || partyIds.includes(overId);
+    const overIsBox = overId === BOX_DROPZONE_ID || boxedIds.includes(overId);
 
-    const sourceIsParty = Boolean(active.data.current?.inParty);
-    if (sourceIsParty === targetIsParty) return;
+    if (activeIsParty && overIsParty) {
+      if (overId === PARTY_DROPZONE_ID) return;
 
-    await moveEncounter(String(active.id), targetIsParty);
+      const oldIndex = partyIds.indexOf(activeId);
+      const newIndex = partyIds.indexOf(overId);
+      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+
+      const reorderedPartyIds = arrayMove(partyIds, oldIndex, newIndex);
+      await commitPartyLayout(reorderedPartyIds);
+      return;
+    }
+
+    if (activeIsParty && overIsBox) {
+      const compactedPartyIds = partyIds.filter((id) => id !== activeId);
+      await commitPartyLayout(compactedPartyIds, [activeId]);
+      return;
+    }
+
+    if (!activeIsParty && overIsParty) {
+      if (partyIds.length >= 6) {
+        toast.error("Party is full!");
+        setActionError("Party is full (6). Move one pair to box first.");
+        return;
+      }
+
+      const nextPartyIds = [...partyIds, activeId];
+      await commitPartyLayout(nextPartyIds);
+    }
   }
 
   return (
@@ -350,70 +657,181 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
 
           <DndContext sensors={sensors} collisionDetection={rectIntersection} onDragEnd={handleDragEnd}>
             <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <Card className="xl:col-span-2">
-              <CardHeader className="flex flex-row items-start justify-between">
-                <div>
-                  <CardTitle className="text-2xl">Live Team</CardTitle>
-                  <CardDescription>Only alive pairs where is_in_party is true (max 6).</CardDescription>
-                </div>
-                <Users className="h-5 w-5 text-emerald-400" />
-              </CardHeader>
-              <CardContent>
-                <DroppableGrid
-                  id={PARTY_DROPZONE_ID}
-                  className="grid min-h-[400px] gap-3 rounded-xl md:grid-cols-2"
-                >
-                  {partySlots.map((encounter, index) =>
-                    encounter ? (
-                      <DraggableEncounterCard
-                        key={encounter.id}
-                        encounter={encounter}
-                        actionLabel="Move to Box"
-                        onAction={() => void moveEncounter(encounter.id, false)}
-                        isActionPending={pendingEncounterIds.includes(encounter.id)}
-                      />
-                    ) : (
-                      <div
-                        key={`party-empty-slot-${index}`}
-                        className="grid min-h-[120px] place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40"
-                      >
-                        <p className="text-xs uppercase tracking-[0.12em] text-slate-500">Empty Slot</p>
-                      </div>
-                    ),
-                  )}
-                </DroppableGrid>
-              </CardContent>
-            </Card>
+              <Card className="xl:col-span-2">
+                <CardHeader className="flex flex-row items-start justify-between">
+                  <div>
+                    <CardTitle className="text-2xl">Live Team</CardTitle>
+                    <CardDescription>Only alive pairs where is_in_party is true (max 6).</CardDescription>
+                  </div>
+                  <Users className="h-5 w-5 text-emerald-400" />
+                </CardHeader>
+                <CardContent>
+                  <DroppableGrid
+                    id={PARTY_DROPZONE_ID}
+                    className="grid min-h-[400px] gap-3 rounded-xl md:grid-cols-2"
+                  >
+                    {(isOver) => (
+                      <SortableContext items={partyIds} strategy={rectSortingStrategy}>
+                        {partySlots.map((encounter, index) =>
+                          encounter ? (
+                            <SortablePartyCard
+                              key={encounter.id}
+                              encounter={encounter}
+                              actionLabel="Move to Box"
+                              onAction={() => void moveEncounter(encounter.id, false)}
+                              onRelease={() => void releaseEncounter(encounter.id)}
+                              onSelect={() => setSelectedPairId(encounter.id)}
+                              isActionPending={pendingEncounterIds.includes(encounter.id)}
+                              isReleasePending={releasingEncounterIds.includes(encounter.id)}
+                              isSelected={selectedPairId === encounter.id}
+                            />
+                          ) : (
+                            <div
+                              key={`party-empty-slot-${index}`}
+                              className={`grid h-full min-h-[260px] place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 p-4 text-center transition ${isOver ? "border-emerald-500/40 bg-emerald-500/10" : ""}`}
+                            >
+                              <p className="text-xs uppercase tracking-[0.12em] text-slate-500">EMPTY SLOT</p>
+                            </div>
+                          ),
+                        )}
+                      </SortableContext>
+                    )}
+                  </DroppableGrid>
+                </CardContent>
+              </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-2xl">PC Box</CardTitle>
-                <CardDescription>Alive encounters where is_in_party is false.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <DroppableGrid id={BOX_DROPZONE_ID} className="min-h-[400px] space-y-2 rounded-xl">
-                  {boxedAliveEncounters.length === 0 && (
-                    <div className="grid min-h-[120px] place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40">
-                      <p className="text-xs uppercase tracking-[0.12em] text-slate-500">Empty Slot</p>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-2xl">Soul Link Intel</CardTitle>
+                  <CardDescription>Types and base stats for the selected pair.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {/* Conditional render: show empty state until a user selects an encounter card. */}
+                  {!selectedPair && (
+                    <div className="grid min-h-[260px] place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 p-4 text-center">
+                      <p className="text-sm text-slate-400">Select a pair to view intel.</p>
                     </div>
                   )}
-                  {boxedAliveEncounters.length > 0 && (
-                    <>
-                    {boxedAliveEncounters.map((encounter) => (
-                      <DraggableEncounterCard
-                        key={`pc-${encounter.id}`}
-                        encounter={encounter}
-                        actionLabel="Move to Party"
-                        onAction={() => void moveEncounter(encounter.id, true)}
-                        isActionPending={pendingEncounterIds.includes(encounter.id)}
-                      />
-                    ))}
-                    </>
+                  {selectedPair && (
+                    <div className="space-y-4">
+                      <div className="rounded-lg border border-emerald-500/20 bg-slate-950/60 p-3">
+                        <p className="text-sm font-semibold text-slate-100">
+                          {selectedPair.pokemon_a} / {selectedPair.pokemon_b}
+                        </p>
+                        <p className="text-xs text-slate-400">{selectedPair.location}</p>
+                      </div>
+                      {intelLoading && <p className="text-sm text-slate-400">Loading intel...</p>}
+                      {!intelLoading && pairIntel && (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-[0.12em] text-slate-400">
+                                {selectedPair.pokemon_a}
+                              </p>
+                              <div className="flex flex-wrap gap-1">
+                                {pairIntel.pokemonA.types.map((type) => (
+                                  <span
+                                    key={`a-${type}`}
+                                    className={`rounded-full px-2 py-1 text-[10px] uppercase ${typeColorMap[type] ?? "bg-slate-700/30 text-slate-200"}`}
+                                  >
+                                    {type}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <p className="text-xs uppercase tracking-[0.12em] text-slate-400">
+                                {selectedPair.pokemon_b}
+                              </p>
+                              <div className="flex flex-wrap gap-1">
+                                {pairIntel.pokemonB.types.map((type) => (
+                                  <span
+                                    key={`b-${type}`}
+                                    className={`rounded-full px-2 py-1 text-[10px] uppercase ${typeColorMap[type] ?? "bg-slate-700/30 text-slate-200"}`}
+                                  >
+                                    {type}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-2">
+                              {pairIntel.pokemonA.stats.map((stat) => (
+                                <div key={`a-stat-${stat.label}`}>
+                                  <div className="mb-1 flex items-center justify-between text-[10px] uppercase text-slate-400">
+                                    <span>{stat.label.replaceAll("-", " ")}</span>
+                                    <span>{stat.value}</span>
+                                  </div>
+                                  <div className="h-1.5 rounded bg-slate-800">
+                                    <div
+                                      className="h-full rounded bg-emerald-400"
+                                      style={{ width: `${Math.min(100, (stat.value / 180) * 100)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="space-y-2">
+                              {pairIntel.pokemonB.stats.map((stat) => (
+                                <div key={`b-stat-${stat.label}`}>
+                                  <div className="mb-1 flex items-center justify-between text-[10px] uppercase text-slate-400">
+                                    <span>{stat.label.replaceAll("-", " ")}</span>
+                                    <span>{stat.value}</span>
+                                  </div>
+                                  <div className="h-1.5 rounded bg-slate-800">
+                                    <div
+                                      className="h-full rounded bg-emerald-400"
+                                      style={{ width: `${Math.min(100, (stat.value / 180) * 100)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
-                </DroppableGrid>
-              </CardContent>
-            </Card>
-          </section>
+                </CardContent>
+              </Card>
+            </section>
+
+            <section className="mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-2xl">PC Box</CardTitle>
+                  <CardDescription>Alive encounters where is_in_party is false.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <DroppableGrid
+                    id={BOX_DROPZONE_ID}
+                    className="grid min-h-[300px] gap-3 rounded-xl md:grid-cols-2 xl:grid-cols-3"
+                  >
+                    {boxedAliveEncounters.length === 0 && (
+                      <div className="grid h-full min-h-[260px] place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 p-4 text-center">
+                        <p className="text-xs uppercase tracking-[0.12em] text-slate-500">EMPTY SLOT</p>
+                      </div>
+                    )}
+                    {boxedAliveEncounters.length > 0 &&
+                      boxedAliveEncounters.map((encounter) => (
+                        <DraggableEncounterCard
+                          key={`pc-${encounter.id}`}
+                          encounter={encounter}
+                          actionLabel="Move to Party"
+                          onAction={() => void moveEncounter(encounter.id, true)}
+                          onRelease={() => void releaseEncounter(encounter.id)}
+                          onSelect={() => setSelectedPairId(encounter.id)}
+                          isActionPending={pendingEncounterIds.includes(encounter.id)}
+                          isReleasePending={releasingEncounterIds.includes(encounter.id)}
+                          isSelected={selectedPairId === encounter.id}
+                        />
+                      ))}
+                  </DroppableGrid>
+                </CardContent>
+              </Card>
+            </section>
           </DndContext>
         </main>
       </div>

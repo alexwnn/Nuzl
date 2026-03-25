@@ -11,6 +11,7 @@ Output: Renders a compact HUD nameplate with sprite + text for dashboard team/bo
 type PokemonNameplateProps = {
   pokemonName: string | null;
   nickname?: string | null;
+  ability?: string | null;
 };
 
 type PokeApiPokemon = {
@@ -28,7 +29,17 @@ function toSlug(value: string | null) {
   return value?.trim().toLowerCase() ?? "";
 }
 
-export function PokemonNameplate({ pokemonName, nickname }: PokemonNameplateProps) {
+function toDisplayName(value: string | null | undefined) {
+  if (!value) return "Unknown";
+  return value
+    .replaceAll("-", " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+export function PokemonNameplate({ pokemonName, nickname, ability }: PokemonNameplateProps) {
   const [spriteUrl, setSpriteUrl] = useState<string | null>(null);
   const slug = useMemo(() => toSlug(pokemonName), [pokemonName]);
   const resolvedSpriteUrl = slug ? spriteUrl : null;
@@ -67,23 +78,26 @@ export function PokemonNameplate({ pokemonName, nickname }: PokemonNameplateProp
   }, [slug]);
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="grid h-9 w-9 place-items-center overflow-hidden rounded-md border border-emerald-500/20 bg-slate-900">
+    <div className="flex min-h-[118px] w-full max-w-[140px] flex-col items-center text-center">
+      {/*
+      Flexbox note: `flex-col items-center` keeps the larger sprite and text vertically stacked
+      and centered, so names/nicknames stay visually aligned directly under each sprite.
+      */}
+      <div className="grid h-20 w-20 place-items-center overflow-hidden rounded-md border border-emerald-500/20 bg-slate-900">
         {resolvedSpriteUrl ? (
           <Image
             src={resolvedSpriteUrl}
             alt={`${pokemonName ?? "Pokemon"} sprite`}
-            width={30}
-            height={30}
+            width={72}
+            height={72}
           />
         ) : (
           <span className="text-[10px] text-slate-500">N/A</span>
         )}
       </div>
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-slate-100">{pokemonName ?? "Unknown"}</p>
-        {nickname && <p className="truncate text-xs text-emerald-300">{`"${nickname}"`}</p>}
-      </div>
+      <p className="mt-1 w-full truncate text-sm font-semibold text-slate-100">{toDisplayName(pokemonName)}</p>
+      <p className="w-full truncate text-[11px] text-slate-400">{nickname ? `"${toDisplayName(nickname)}"` : "-"}</p>
+      <p className="mt-auto w-full truncate text-[11px] text-emerald-300">{toDisplayName(ability ?? "-")}</p>
     </div>
   );
 }

@@ -16,6 +16,7 @@ export const encounterInsertSchema = z.object({
   ability_b: z.string().trim().min(1).max(40),
   status: z.enum(["alive", "dead", "boxed"]),
   is_in_party: z.boolean().default(false),
+  order_index: z.number().int().nonnegative().nullable().default(null),
 });
 
 export type EncounterInsertInput = z.infer<typeof encounterInsertSchema>;

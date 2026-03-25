@@ -65,6 +65,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
     ability_b: "",
     status: "alive",
     is_in_party: false,
+    order_index: null as number | null,
   });
   const [abilityOptionsA, setAbilityOptionsA] = useState<string[]>([]);
   const [abilityOptionsB, setAbilityOptionsB] = useState<string[]>([]);
@@ -267,7 +268,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
         .from("encounters")
         .insert(validatedEncounter)
         .select(
-          "id, session_id, location, pokemon_a, nickname_a, ability_a, pokemon_b, nickname_b, ability_b, status, is_in_party, created_at",
+          "id, session_id, location, pokemon_a, nickname_a, ability_a, pokemon_b, nickname_b, ability_b, status, is_in_party, order_index, created_at",
         )
         .single();
 
@@ -291,6 +292,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
         ability_b: "",
         status: "alive",
         is_in_party: false,
+        order_index: null,
       });
       setAbilityOptionsA([]);
       setAbilityOptionsB([]);

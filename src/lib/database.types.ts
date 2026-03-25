@@ -40,6 +40,7 @@ export type Database = {
           ability_b: string;
           status: string;
           is_in_party: boolean;
+          order_index: number | null;
           created_at: string;
         };
         Insert: {
@@ -54,6 +55,7 @@ export type Database = {
           ability_b: string;
           status: string;
           is_in_party?: boolean;
+          order_index?: number | null;
           created_at?: string;
         };
         Update: {
@@ -68,6 +70,7 @@ export type Database = {
           ability_b?: string;
           status?: string;
           is_in_party?: boolean;
+          order_index?: number | null;
           created_at?: string;
         };
         Relationships: [
