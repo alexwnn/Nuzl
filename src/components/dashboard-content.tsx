@@ -1,7 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Shield, Swords, Trophy, Users } from "lucide-react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  rectIntersection,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical, Shield, Swords, Trophy, Users } from "lucide-react";
+import { toast } from "sonner";
 
 import { AddEncounterModal } from "@/components/add-encounter-modal";
 import { CollapsibleSidebar } from "@/components/collapsible-sidebar";
@@ -19,6 +32,90 @@ type DashboardContentProps = {
   initialEncounters: EncounterRow[];
   sessions: SessionRow[];
 };
+
+const PARTY_DROPZONE_ID = "party-dropzone";
+const BOX_DROPZONE_ID = "box-dropzone";
+
+type DroppableGridProps = {
+  id: string;
+  className: string;
+  children: React.ReactNode;
+};
+
+function DroppableGrid({ id, className, children }: DroppableGridProps) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${className} ${isOver ? "ring-1 ring-emerald-400 ring-offset-2 ring-offset-slate-950" : ""}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+type DraggableEncounterCardProps = {
+  encounter: EncounterRow;
+  actionLabel: "Move to Party" | "Move to Box";
+  onAction: () => void;
+  isActionPending: boolean;
+};
+
+function DraggableEncounterCard({
+  encounter,
+  actionLabel,
+  onAction,
+  isActionPending,
+}: DraggableEncounterCardProps) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: encounter.id,
+    data: { inParty: encounter.is_in_party },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition: "transform 160ms ease" }}
+      className={`rounded-lg border border-emerald-500/20 bg-slate-950/70 px-3 py-2 ${isDragging ? "opacity-50 scale-105" : ""}`}
+    >
+      <div className="mb-2 flex items-center justify-between">
+        <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-xs text-emerald-300">
+          {encounter.location ?? "Unknown"}
+        </span>
+        <button
+          type="button"
+          {...listeners}
+          {...attributes}
+          className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 px-2 py-1 text-xs text-slate-300 hover:bg-emerald-500/10"
+          aria-label="Drag encounter card"
+        >
+          <GripVertical className="h-3 w-3" />
+          Drag
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <PokemonNameplate pokemonName={encounter.pokemon_a ?? "Unknown"} nickname={encounter.nickname_a} />
+        <Swords className="h-4 w-4 text-slate-500" />
+        <PokemonNameplate pokemonName={encounter.pokemon_b ?? "Unknown"} nickname={encounter.nickname_b} />
+      </div>
+      <p className="mt-2 text-xs text-slate-400">
+        {encounter.ability_a ?? "Unknown"} / {encounter.ability_b ?? "Unknown"}
+      </p>
+      <div className="mt-2">
+        <button
+          type="button"
+          onClick={onAction}
+          disabled={isActionPending}
+          className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {actionLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /*
 Input: Current encounter list + a Supabase realtime payload.
@@ -91,9 +188,12 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
 
   const aliveEncounters = encounters.filter((encounter) => encounter.status?.toLowerCase() === "alive");
   const fallenCount = encounters.filter((encounter) => encounter.status?.toLowerCase() === "dead").length;
+  const partyCount = aliveEncounters.filter((encounter) => encounter.is_in_party).length;
   const activeTeam = aliveEncounters.filter((encounter) => encounter.is_in_party).slice(0, 6);
+  const partySlots = Array.from({ length: 6 }, (_, index) => activeTeam[index] ?? null);
   const boxedAliveEncounters = aliveEncounters.filter((encounter) => !encounter.is_in_party);
   const latestLocation = encounters[0]?.location ?? "No encounters yet";
+  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor));
 
   /*
   Input: Encounter id and destination flag (`true` for party, `false` for box).
@@ -103,7 +203,12 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   async function moveEncounter(encounterId: string, nextInParty: boolean) {
     if (pendingEncounterIds.includes(encounterId)) return;
 
-    if (nextInParty && activeTeam.length >= 6) {
+    const targetEncounter = encounters.find((entry) => entry.id === encounterId);
+    if (!targetEncounter) return;
+    if (targetEncounter.is_in_party === nextInParty) return;
+
+    if (nextInParty && partyCount >= 6) {
+      toast.error("Party is full!");
       setActionError("Party is full (6). Move one pair to box first.");
       return;
     }
@@ -112,9 +217,23 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
     setPendingEncounterIds((current) => [...current, encounterId]);
 
     const previous = encounters;
-    setEncounters((current) =>
-      current.map((entry) => (entry.id === encounterId ? { ...entry, is_in_party: nextInParty } : entry)),
-    );
+    setEncounters((current) => {
+      const moved = current.find((entry) => entry.id === encounterId);
+      if (!moved) return current;
+
+      const withoutMoved = current.filter((entry) => entry.id !== encounterId);
+      const updatedMoved = { ...moved, is_in_party: nextInParty };
+
+      if (!nextInParty) {
+        return [...withoutMoved, updatedMoved];
+      }
+
+      // Append to the next available party slot by inserting after current party entries.
+      const insertIndex = withoutMoved.filter((entry) => entry.is_in_party).length;
+      const before = withoutMoved.slice(0, insertIndex);
+      const after = withoutMoved.slice(insertIndex);
+      return [...before, updatedMoved, ...after];
+    });
 
     const { error } = await supabase
       .from("encounters")
@@ -127,6 +246,26 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
     }
 
     setPendingEncounterIds((current) => current.filter((id) => id !== encounterId));
+  }
+
+  /*
+  Input: dnd-kit drag end event containing the dragged card id and target dropzone id.
+  Transformation: Determines destination (party/box) and calls moveEncounter, which performs
+  an optimistic UI update first so cards visually move immediately before Supabase confirms.
+  Output: Persisted `is_in_party` value in Supabase and synchronized dashboard sections.
+  */
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over) return;
+
+    const targetIsParty =
+      over.id === PARTY_DROPZONE_ID ? true : over.id === BOX_DROPZONE_ID ? false : null;
+    if (targetIsParty === null) return;
+
+    const sourceIsParty = Boolean(active.data.current?.inParty);
+    if (sourceIsParty === targetIsParty) return;
+
+    await moveEncounter(String(active.id), targetIsParty);
   }
 
   return (
@@ -209,7 +348,8 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
             </Card>
           </section>
 
-          <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+          <DndContext sensors={sensors} collisionDetection={rectIntersection} onDragEnd={handleDragEnd}>
+            <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
             <Card className="xl:col-span-2">
               <CardHeader className="flex flex-row items-start justify-between">
                 <div>
@@ -219,50 +359,29 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                 <Users className="h-5 w-5 text-emerald-400" />
               </CardHeader>
               <CardContent>
-                {activeTeam.length === 0 ? (
-                  <p className="text-sm text-slate-400">
-                    No active pairs yet. Catch your first linked encounter.
-                  </p>
-                ) : (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {activeTeam.map((encounter) => (
-                      <div
+                <DroppableGrid
+                  id={PARTY_DROPZONE_ID}
+                  className="grid min-h-[400px] gap-3 rounded-xl md:grid-cols-2"
+                >
+                  {partySlots.map((encounter, index) =>
+                    encounter ? (
+                      <DraggableEncounterCard
                         key={encounter.id}
-                        className="rounded-xl border border-emerald-500/20 bg-slate-950/70 p-4"
+                        encounter={encounter}
+                        actionLabel="Move to Box"
+                        onAction={() => void moveEncounter(encounter.id, false)}
+                        isActionPending={pendingEncounterIds.includes(encounter.id)}
+                      />
+                    ) : (
+                      <div
+                        key={`party-empty-slot-${index}`}
+                        className="grid min-h-[120px] place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40"
                       >
-                        <p className="mb-2 text-xs uppercase tracking-wider text-emerald-300">
-                          {encounter.location ?? "Unknown Location"}
-                        </p>
-                        <div className="flex items-center justify-between gap-3">
-                          <PokemonNameplate
-                            pokemonName={encounter.pokemon_a ?? "Unknown"}
-                            nickname={encounter.nickname_a}
-                          />
-                          <Swords className="h-4 w-4 text-slate-500" />
-                          <PokemonNameplate
-                            pokemonName={encounter.pokemon_b ?? "Unknown"}
-                            nickname={encounter.nickname_b}
-                          />
-                        </div>
-                        <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
-                          <span>A: {encounter.ability_a ?? "Unknown"}</span>
-                          <span>B: {encounter.ability_b ?? "Unknown"}</span>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between">
-                          <p className="text-xs text-slate-400">Status: {encounter.status ?? "unknown"}</p>
-                          <button
-                            type="button"
-                            onClick={() => void moveEncounter(encounter.id, false)}
-                            disabled={pendingEncounterIds.includes(encounter.id)}
-                            className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            Move to Box
-                          </button>
-                        </div>
+                        <p className="text-xs uppercase tracking-[0.12em] text-slate-500">Empty Slot</p>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    ),
+                  )}
+                </DroppableGrid>
               </CardContent>
             </Card>
 
@@ -272,49 +391,30 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                 <CardDescription>Alive encounters where is_in_party is false.</CardDescription>
               </CardHeader>
               <CardContent>
-                {boxedAliveEncounters.length === 0 ? (
-                  <p className="text-sm text-slate-400">No boxed Pokemon yet.</p>
-                ) : (
-                  <div className="space-y-2">
+                <DroppableGrid id={BOX_DROPZONE_ID} className="min-h-[400px] space-y-2 rounded-xl">
+                  {boxedAliveEncounters.length === 0 && (
+                    <div className="grid min-h-[120px] place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40">
+                      <p className="text-xs uppercase tracking-[0.12em] text-slate-500">Empty Slot</p>
+                    </div>
+                  )}
+                  {boxedAliveEncounters.length > 0 && (
+                    <>
                     {boxedAliveEncounters.map((encounter) => (
-                      <div
+                      <DraggableEncounterCard
                         key={`pc-${encounter.id}`}
-                        className="rounded-lg border border-emerald-500/20 bg-slate-950/70 px-3 py-2"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <PokemonNameplate
-                            pokemonName={encounter.pokemon_a ?? "Unknown"}
-                            nickname={encounter.nickname_a}
-                          />
-                          <Swords className="h-4 w-4 text-slate-500" />
-                          <PokemonNameplate
-                            pokemonName={encounter.pokemon_b ?? "Unknown"}
-                            nickname={encounter.nickname_b}
-                          />
-                        </div>
-                        <p className="mt-2 text-xs text-slate-400">
-                          {encounter.ability_a ?? "Unknown"} / {encounter.ability_b ?? "Unknown"}
-                        </p>
-                        <span className="mt-2 inline-flex rounded-full bg-emerald-500/20 px-2 py-1 text-xs text-emerald-300">
-                          {encounter.location ?? "Unknown"}
-                        </span>
-                        <div className="mt-2">
-                          <button
-                            type="button"
-                            onClick={() => void moveEncounter(encounter.id, true)}
-                            disabled={pendingEncounterIds.includes(encounter.id)}
-                            className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            Move to Party
-                          </button>
-                        </div>
-                      </div>
+                        encounter={encounter}
+                        actionLabel="Move to Party"
+                        onAction={() => void moveEncounter(encounter.id, true)}
+                        isActionPending={pendingEncounterIds.includes(encounter.id)}
+                      />
                     ))}
-                  </div>
-                )}
+                    </>
+                  )}
+                </DroppableGrid>
               </CardContent>
             </Card>
           </section>
+          </DndContext>
         </main>
       </div>
     </div>
