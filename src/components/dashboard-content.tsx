@@ -61,6 +61,8 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   const [encounters, setEncounters] = useState<EncounterRow[]>(initialEncounters);
   const [sessionOptions, setSessionOptions] = useState<SessionRow[]>(sessions);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingEncounterIds, setPendingEncounterIds] = useState<string[]>([]);
 
   useEffect(() => {
     const channel = supabase
@@ -89,8 +91,43 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
 
   const aliveEncounters = encounters.filter((encounter) => encounter.status?.toLowerCase() === "alive");
   const fallenCount = encounters.filter((encounter) => encounter.status?.toLowerCase() === "dead").length;
-  const activeTeam = aliveEncounters.slice(0, 6);
+  const activeTeam = aliveEncounters.filter((encounter) => encounter.is_in_party).slice(0, 6);
+  const boxedAliveEncounters = aliveEncounters.filter((encounter) => !encounter.is_in_party);
   const latestLocation = encounters[0]?.location ?? "No encounters yet";
+
+  /*
+  Input: Encounter id and destination flag (`true` for party, `false` for box).
+  Transformation: Optimistically updates local state, persists `is_in_party` in Supabase, and rolls back on error.
+  Output: Updated encounter placement across Live Team and PC Box sections.
+  */
+  async function moveEncounter(encounterId: string, nextInParty: boolean) {
+    if (pendingEncounterIds.includes(encounterId)) return;
+
+    if (nextInParty && activeTeam.length >= 6) {
+      setActionError("Party is full (6). Move one pair to box first.");
+      return;
+    }
+
+    setActionError(null);
+    setPendingEncounterIds((current) => [...current, encounterId]);
+
+    const previous = encounters;
+    setEncounters((current) =>
+      current.map((entry) => (entry.id === encounterId ? { ...entry, is_in_party: nextInParty } : entry)),
+    );
+
+    const { error } = await supabase
+      .from("encounters")
+      .update({ is_in_party: nextInParty })
+      .eq("id", encounterId);
+
+    if (error) {
+      setEncounters(previous);
+      setActionError(`Failed to move encounter: ${error.message}`);
+    }
+
+    setPendingEncounterIds((current) => current.filter((id) => id !== encounterId));
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -115,6 +152,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                     {realtimeConnected ? "Connected" : "Connecting..."}
                   </span>
                 </p>
+                {actionError && <p className="text-xs text-amber-300">{actionError}</p>}
               </div>
 
               <AddEncounterModal
@@ -176,7 +214,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
               <CardHeader className="flex flex-row items-start justify-between">
                 <div>
                   <CardTitle className="text-2xl">Live Team</CardTitle>
-                  <CardDescription>Top six alive Soul Link pairs by recency.</CardDescription>
+                  <CardDescription>Only alive pairs where is_in_party is true (max 6).</CardDescription>
                 </div>
                 <Users className="h-5 w-5 text-emerald-400" />
               </CardHeader>
@@ -210,7 +248,17 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                           <span>A: {encounter.ability_a ?? "Unknown"}</span>
                           <span>B: {encounter.ability_b ?? "Unknown"}</span>
                         </div>
-                        <p className="mt-2 text-xs text-slate-400">Status: {encounter.status ?? "unknown"}</p>
+                        <div className="mt-2 flex items-center justify-between">
+                          <p className="text-xs text-slate-400">Status: {encounter.status ?? "unknown"}</p>
+                          <button
+                            type="button"
+                            onClick={() => void moveEncounter(encounter.id, false)}
+                            disabled={pendingEncounterIds.includes(encounter.id)}
+                            className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Move to Box
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -221,14 +269,14 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
             <Card>
               <CardHeader>
                 <CardTitle className="text-2xl">PC Box</CardTitle>
-                <CardDescription>Caught Pokemon pool (currently all alive encounters).</CardDescription>
+                <CardDescription>Alive encounters where is_in_party is false.</CardDescription>
               </CardHeader>
               <CardContent>
-                {aliveEncounters.length === 0 ? (
+                {boxedAliveEncounters.length === 0 ? (
                   <p className="text-sm text-slate-400">No boxed Pokemon yet.</p>
                 ) : (
                   <div className="space-y-2">
-                    {aliveEncounters.map((encounter) => (
+                    {boxedAliveEncounters.map((encounter) => (
                       <div
                         key={`pc-${encounter.id}`}
                         className="rounded-lg border border-emerald-500/20 bg-slate-950/70 px-3 py-2"
@@ -250,6 +298,16 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                         <span className="mt-2 inline-flex rounded-full bg-emerald-500/20 px-2 py-1 text-xs text-emerald-300">
                           {encounter.location ?? "Unknown"}
                         </span>
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            onClick={() => void moveEncounter(encounter.id, true)}
+                            disabled={pendingEncounterIds.includes(encounter.id)}
+                            className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Move to Party
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
