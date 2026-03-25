@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 
 import { encounterInsertSchema } from "@/lib/encounter-schema";
@@ -66,6 +66,8 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
     status: "alive",
     is_in_party: false,
   });
+  const [abilityOptionsA, setAbilityOptionsA] = useState<string[]>([]);
+  const [abilityOptionsB, setAbilityOptionsB] = useState<string[]>([]);
 
   const hasSessions = sessions.length > 0;
   const sessionPlaceholder = useMemo(
@@ -78,6 +80,41 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
       setFormState((state) => ({ ...state, session_id: getDefaultSessionId(sessions) }));
     }
   }, [formState.session_id, hasSessions, sessions]);
+
+  /*
+  Input: Resolved Pokemon A payload from PokemonSearch (normalized name + abilities list).
+  Transformation: Synchronizes the canonical Pokemon name and hydrates Ability A options.
+  Output: Updates form state so the ability dropdown can be selected without manual typing.
+  */
+  /*
+  Referential-equality fix: useCallback keeps this handler identity stable across renders.
+  This prevents child effects that depend on the callback from retriggering indefinitely.
+  */
+  const handlePokemonAResolved = useCallback((payload: { name: string; abilities: string[] }) => {
+    setAbilityOptionsA(payload.abilities);
+    setFormState((state) => ({
+      ...state,
+      pokemon_a: payload.name || state.pokemon_a,
+      ability_a: payload.abilities[0] ?? "",
+    }));
+  }, []);
+
+  /*
+  Input: Resolved Pokemon B payload from PokemonSearch (normalized name + abilities list).
+  Transformation: Synchronizes the canonical Pokemon name and hydrates Ability B options.
+  Output: Updates form state so the ability dropdown can be selected without manual typing.
+  */
+  /*
+  Referential-equality fix: stable callback identity avoids repeated child effect execution.
+  */
+  const handlePokemonBResolved = useCallback((payload: { name: string; abilities: string[] }) => {
+    setAbilityOptionsB(payload.abilities);
+    setFormState((state) => ({
+      ...state,
+      pokemon_b: payload.name || state.pokemon_b,
+      ability_b: payload.abilities[0] ?? "",
+    }));
+  }, []);
 
   /*
   Input: Raw `sessionName` from the nested "create first session" form.
@@ -255,6 +292,8 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
         status: "alive",
         is_in_party: false,
       });
+      setAbilityOptionsA([]);
+      setAbilityOptionsB([]);
       setIsOpen(false);
     } catch {
       setErrorMessage("Unable to save encounter right now. Please try again.");
@@ -377,11 +416,13 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
                   label="Pokemon A"
                   value={formState.pokemon_a}
                   onChange={(pokemon_a) => setFormState((state) => ({ ...state, pokemon_a }))}
+                  onPokemonResolved={handlePokemonAResolved}
                 />
                 <PokemonSearch
                   label="Pokemon B"
                   value={formState.pokemon_b}
                   onChange={(pokemon_b) => setFormState((state) => ({ ...state, pokemon_b }))}
+                  onPokemonResolved={handlePokemonBResolved}
                 />
               </div>
 
@@ -421,29 +462,39 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
                   <label className="text-xs uppercase tracking-[0.18em] text-slate-400">
                     Ability A
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={formState.ability_a}
                     onChange={(event) =>
                       setFormState((state) => ({ ...state, ability_a: event.target.value }))
                     }
-                    placeholder="e.g. static"
-                    className="w-full rounded-xl border border-emerald-500/20 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                  />
+                    className="w-full rounded-xl border border-emerald-500/20 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none"
+                  >
+                    <option value="">Select Ability A</option>
+                    {abilityOptionsA.map((ability) => (
+                      <option key={ability} value={ability}>
+                        {ability}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs uppercase tracking-[0.18em] text-slate-400">
                     Ability B
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={formState.ability_b}
                     onChange={(event) =>
                       setFormState((state) => ({ ...state, ability_b: event.target.value }))
                     }
-                    placeholder="e.g. torrent"
-                    className="w-full rounded-xl border border-emerald-500/20 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500"
-                  />
+                    className="w-full rounded-xl border border-emerald-500/20 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none"
+                  >
+                    <option value="">Select Ability B</option>
+                    {abilityOptionsB.map((ability) => (
+                      <option key={ability} value={ability}>
+                        {ability}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
