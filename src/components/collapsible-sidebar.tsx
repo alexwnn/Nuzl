@@ -34,7 +34,7 @@ export function CollapsibleSidebar() {
   return (
     <aside
       className={cn(
-        "sticky top-0 hidden h-screen border-r border-emerald-500/20 bg-slate-900/80 p-3 backdrop-blur xl:flex xl:flex-col",
+        "sticky top-16 z-40 hidden h-[calc(100vh-4rem)] border-r border-emerald-500/20 bg-slate-900/80 p-3 backdrop-blur xl:flex xl:flex-col",
         collapsed ? "w-20" : "w-72",
       )}
     >
@@ -52,7 +52,7 @@ export function CollapsibleSidebar() {
         </div>
         <button
           onClick={() => setCollapsed((value) => !value)}
-          className="rounded-md border border-emerald-500/20 p-1 text-slate-300 transition hover:bg-emerald-500/10 hover:text-emerald-200"
+          className="relative z-[60] rounded-md border border-emerald-500/20 p-1 text-slate-300 transition hover:bg-emerald-500/10 hover:text-emerald-200"
           aria-label="Toggle sidebar"
         >
           {collapsed ? (

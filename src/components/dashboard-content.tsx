@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -15,7 +15,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Link2, Shield, Trash2, Trophy, Users } from "lucide-react";
+import { GripVertical, Link2, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { AddEncounterModal } from "@/components/add-encounter-modal";
@@ -100,6 +100,14 @@ const typeDefenseCache = new Map<
     noDamageFrom: string[];
   }
 >();
+
+function useHasMounted() {
+  return useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+}
 
 function getStatBarColor(value: number) {
   if (value < 60) return "bg-orange-500";
@@ -329,6 +337,7 @@ function SortablePartyCard({
     id: encounter.id,
     data: { inParty: true },
   });
+  const mounted = useHasMounted();
 
   return (
     <div
@@ -347,8 +356,8 @@ function SortablePartyCard({
         dragHandle={
           <button
             type="button"
-            {...listeners}
-            {...attributes}
+            {...(mounted ? listeners : {})}
+            {...(mounted ? attributes : {})}
             onClick={(event) => event.stopPropagation()}
             className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 px-2 py-1 text-xs text-slate-300 hover:bg-emerald-500/10"
             aria-label="Reorder party encounter card"
@@ -380,14 +389,19 @@ function DraggableBoxMiniCard({ encounter, onSelect, isSelected }: DraggableBoxM
     const controller = new AbortController();
 
     const loadSprites = async () => {
-      const [nextA, nextB] = await Promise.all([
-        fetchPokemonSprite(encounter.pokemon_a, controller.signal),
-        fetchPokemonSprite(encounter.pokemon_b, controller.signal),
-      ]);
+      try {
+        const [nextA, nextB] = await Promise.all([
+          fetchPokemonSprite(encounter.pokemon_a, controller.signal),
+          fetchPokemonSprite(encounter.pokemon_b, controller.signal),
+        ]);
 
-      if (!controller.signal.aborted) {
-        setSpriteA(nextA);
-        setSpriteB(nextB);
+        if (!controller.signal.aborted) {
+          setSpriteA(nextA);
+          setSpriteB(nextB);
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        throw err;
       }
     };
 
@@ -512,13 +526,11 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
       if (aIndex !== bIndex) return aIndex - bIndex;
       return a.created_at.localeCompare(b.created_at);
     });
-  const fallenCount = encounters.filter((encounter) => encounter.status?.toLowerCase() === "dead").length;
   const activeTeam = orderedPartyEncounters.slice(0, 6);
   const partyIds = activeTeam.map((encounter) => encounter.id);
   const partySlots = Array.from({ length: 6 }, (_, index) => activeTeam[index] ?? null);
   const boxedAliveEncounters = aliveEncounters.filter((encounter) => !encounter.is_in_party);
   const boxedIds = boxedAliveEncounters.map((encounter) => encounter.id);
-  const latestLocation = encounters[0]?.location ?? "No encounters yet";
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor));
   const selectedPair = selectedPairId ? encounters.find((encounter) => encounter.id === selectedPairId) ?? null : null;
 
@@ -741,87 +753,33 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-emerald-500/20 bg-slate-950/95 backdrop-blur">
+        <div className="mx-auto flex h-[60px] max-w-[1700px] items-center justify-between px-4 md:px-6 xl:px-8">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold tracking-wide text-emerald-300">Nuzl</p>
+            <p className="text-xs text-slate-400">
+              {realtimeConnected ? "Connected" : "Connecting..."}
+            </p>
+          </div>
+          <AddEncounterModal
+            sessions={sessionOptions}
+            onEncounterAdded={(encounter) =>
+              setEncounters((current) => addEncounterOptimistically(current, encounter))
+            }
+            onSessionAdded={(session) =>
+              setSessionOptions((current) => [session, ...current.filter((item) => item.id !== session.id)])
+            }
+          />
+        </div>
+      </header>
+
       <div className="mx-auto flex max-w-[1700px]">
         <CollapsibleSidebar />
-
-        <main className="w-full flex-1 p-4 md:p-6 xl:p-8">
-          <section className="mb-6 rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/20 via-emerald-500/5 to-transparent p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="flex flex-col gap-2">
-                <p className="text-xs uppercase tracking-[0.22em] text-emerald-300/90">
-                  Nuzl Command Center
-                </p>
-                <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Soul Link Dashboard</h1>
-                <p className="max-w-2xl text-sm text-slate-300">
-                  Track live encounters, monitor active pairs, and keep your run survivability visible
-                  at a glance.
-                </p>
-                <p className="text-xs text-slate-400">
-                  Realtime:{" "}
-                  <span className={realtimeConnected ? "text-emerald-300" : "text-amber-300"}>
-                    {realtimeConnected ? "Connected" : "Connecting..."}
-                  </span>
-                </p>
-                {actionError && <p className="text-xs text-amber-300">{actionError}</p>}
-              </div>
-
-              <AddEncounterModal
-                sessions={sessionOptions}
-                onEncounterAdded={(encounter) =>
-                  setEncounters((current) => addEncounterOptimistically(current, encounter))
-                }
-                onSessionAdded={(session) =>
-                  setSessionOptions((current) => [session, ...current.filter((item) => item.id !== session.id)])
-                }
-              />
-            </div>
-          </section>
-
-          <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription className="text-slate-400">Total Encounters</CardDescription>
-                <CardTitle className="text-4xl">{encounters.length}</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-emerald-300">All logged Soul Link attempts.</CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription className="text-slate-400">Live Pairs</CardDescription>
-                <CardTitle className="flex items-center gap-2 text-4xl">
-                  {aliveEncounters.length}
-                  <Shield className="h-6 w-6 text-emerald-400" />
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-slate-300">
-                Pairs currently marked as alive.
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription className="text-slate-400">Fallen Pairs</CardDescription>
-                <CardTitle className="flex items-center gap-2 text-4xl">
-                  {fallenCount}
-                  <Trophy className="h-6 w-6 text-emerald-400" />
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-slate-300">Pairs lost during the run.</CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription className="text-slate-400">Latest Location</CardDescription>
-                <CardTitle className="line-clamp-2 text-xl">{latestLocation}</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-slate-300">Most recent encounter area.</CardContent>
-            </Card>
-          </section>
-
+        <main className="w-full flex-1 px-4 pb-6 pt-20 md:px-6 xl:px-8">
           <DndContext sensors={sensors} collisionDetection={rectIntersection} onDragEnd={handleDragEnd}>
-            <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-              <Card className="xl:col-span-2">
+            <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+              <div className="space-y-4 xl:col-span-7">
+                <Card>
                 <CardHeader className="flex flex-row items-start justify-between">
                   <div>
                     <CardTitle className="text-2xl">Live Team</CardTitle>
@@ -864,7 +822,36 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                 </CardContent>
               </Card>
 
-              <Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-2xl">PC Box</CardTitle>
+                    <CardDescription>Alive encounters where is_in_party is false.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <DroppableGrid
+                      id={BOX_DROPZONE_ID}
+                      className="grid min-h-[300px] gap-2 rounded-xl sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5"
+                    >
+                      {boxedAliveEncounters.length === 0 && (
+                        <div className="grid h-full min-h-[260px] place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 p-4 text-center">
+                          <p className="text-xs uppercase tracking-[0.12em] text-slate-500">EMPTY SLOT</p>
+                        </div>
+                      )}
+                      {boxedAliveEncounters.length > 0 &&
+                        boxedAliveEncounters.map((encounter) => (
+                          <DraggableBoxMiniCard
+                            key={`pc-${encounter.id}`}
+                            encounter={encounter}
+                            onSelect={() => setSelectedPairId(encounter.id)}
+                            isSelected={selectedPairId === encounter.id}
+                          />
+                        ))}
+                    </DroppableGrid>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <Card className="xl:col-span-5 xl:sticky xl:top-20 xl:h-[calc(100vh-96px)] xl:overflow-y-auto">
                 <CardHeader>
                   <CardTitle className="text-2xl">Soul Link Intel</CardTitle>
                   <CardDescription>Types and base stats for the selected pair.</CardDescription>
@@ -878,12 +865,6 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                   )}
                   {selectedPair && (
                     <div className="space-y-4">
-                      <div className="rounded-lg border border-emerald-500/20 bg-slate-950/60 p-3">
-                        <p className="text-sm font-semibold text-slate-100">
-                          {selectedPair.pokemon_a} / {selectedPair.pokemon_b}
-                        </p>
-                        <p className="text-xs text-slate-400">{selectedPair.location}</p>
-                      </div>
                       {intelLoading && <p className="text-sm text-slate-400">Loading intel...</p>}
                       {!intelLoading && pairIntel && (
                         <div className="space-y-4">
@@ -918,11 +899,11 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                               <div className="space-y-2">
                                 {pairIntel.pokemonA.stats.map((stat) => (
                                   <div key={`a-stat-${stat.label}`}>
-                                    <div className="mb-1 flex items-center justify-between text-[10px] uppercase text-slate-400">
+                                    <div className="mb-1 flex items-center justify-between text-[11px] uppercase text-slate-400">
                                       <span>{stat.label.replaceAll("-", " ")}</span>
                                       <span>{stat.value}</span>
                                     </div>
-                                    <div className="h-2 rounded bg-slate-800">
+                                    <div className="h-3 rounded bg-slate-800">
                                       <div
                                         className={`h-full rounded ${getStatBarColor(stat.value)}`}
                                         style={{ width: `${Math.min(100, (stat.value / 180) * 100)}%` }}
@@ -963,11 +944,11 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                               <div className="space-y-2">
                                 {pairIntel.pokemonB.stats.map((stat) => (
                                   <div key={`b-stat-${stat.label}`}>
-                                    <div className="mb-1 flex items-center justify-between text-[10px] uppercase text-slate-400">
+                                    <div className="mb-1 flex items-center justify-between text-[11px] uppercase text-slate-400">
                                       <span>{stat.label.replaceAll("-", " ")}</span>
                                       <span>{stat.value}</span>
                                     </div>
-                                    <div className="h-2 rounded bg-slate-800">
+                                    <div className="h-3 rounded bg-slate-800">
                                       <div
                                         className={`h-full rounded ${getStatBarColor(stat.value)}`}
                                         style={{ width: `${Math.min(100, (stat.value / 180) * 100)}%` }}
@@ -981,24 +962,24 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
 
                           <div className="space-y-3">
                             <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Type Defenses</p>
-                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                               <div className="rounded-lg border border-emerald-500/20 bg-slate-950/40 p-3">
                                 <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-300">
                                   {toDisplayNameUpper(selectedPair.pokemon_a)}
                                 </p>
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-4 gap-2">
                                   {pairIntel.pokemonA.typeDefenses.map((defense) => (
                                     <div
                                       key={`a-defense-${defense.type}`}
-                                      className={`rounded-md border p-1.5 text-center ${getDefenseTone(defense.multiplier).container}`}
+                                      className={`rounded-md border p-2 text-center ${getDefenseTone(defense.multiplier).container}`}
                                     >
                                       <p
-                                        className={`rounded px-1 py-0.5 text-[9px] uppercase ${typeColorMap[defense.type] ?? "bg-slate-700/30 text-slate-200"}`}
+                                        className={`rounded px-1 py-0.5 text-[10px] uppercase ${typeColorMap[defense.type] ?? "bg-slate-700/30 text-slate-200"}`}
                                       >
                                         {defense.type.slice(0, 3)}
                                       </p>
                                       <p
-                                        className={`mt-1 text-[10px] ${getDefenseTone(defense.multiplier).value}`}
+                                        className={`mt-1 text-[11px] font-semibold ${getDefenseTone(defense.multiplier).value}`}
                                       >
                                         {formatMultiplier(defense.multiplier)}
                                       </p>
@@ -1011,19 +992,19 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                                 <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-300">
                                   {toDisplayNameUpper(selectedPair.pokemon_b)}
                                 </p>
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-4 gap-2">
                                   {pairIntel.pokemonB.typeDefenses.map((defense) => (
                                     <div
                                       key={`b-defense-${defense.type}`}
-                                      className={`rounded-md border p-1.5 text-center ${getDefenseTone(defense.multiplier).container}`}
+                                      className={`rounded-md border p-2 text-center ${getDefenseTone(defense.multiplier).container}`}
                                     >
                                       <p
-                                        className={`rounded px-1 py-0.5 text-[9px] uppercase ${typeColorMap[defense.type] ?? "bg-slate-700/30 text-slate-200"}`}
+                                        className={`rounded px-1 py-0.5 text-[10px] uppercase ${typeColorMap[defense.type] ?? "bg-slate-700/30 text-slate-200"}`}
                                       >
                                         {defense.type.slice(0, 3)}
                                       </p>
                                       <p
-                                        className={`mt-1 text-[10px] ${getDefenseTone(defense.multiplier).value}`}
+                                        className={`mt-1 text-[11px] font-semibold ${getDefenseTone(defense.multiplier).value}`}
                                       >
                                         {formatMultiplier(defense.multiplier)}
                                       </p>
@@ -1040,37 +1021,10 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                 </CardContent>
               </Card>
             </section>
-
-            <section className="mt-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-2xl">PC Box</CardTitle>
-                  <CardDescription>Alive encounters where is_in_party is false.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <DroppableGrid
-                    id={BOX_DROPZONE_ID}
-                    className="grid min-h-[300px] gap-2 rounded-xl sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5"
-                  >
-                    {boxedAliveEncounters.length === 0 && (
-                      <div className="grid h-full min-h-[260px] place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 p-4 text-center">
-                        <p className="text-xs uppercase tracking-[0.12em] text-slate-500">EMPTY SLOT</p>
-                      </div>
-                    )}
-                    {boxedAliveEncounters.length > 0 &&
-                      boxedAliveEncounters.map((encounter) => (
-                        <DraggableBoxMiniCard
-                          key={`pc-${encounter.id}`}
-                          encounter={encounter}
-                          onSelect={() => setSelectedPairId(encounter.id)}
-                          isSelected={selectedPairId === encounter.id}
-                        />
-                      ))}
-                  </DroppableGrid>
-                </CardContent>
-              </Card>
-            </section>
           </DndContext>
+          {actionError && (
+            <p className="mt-3 text-xs text-amber-300">{actionError}</p>
+          )}
         </main>
       </div>
     </div>
