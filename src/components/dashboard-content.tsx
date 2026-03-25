@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import {
   DndContext,
@@ -40,6 +41,8 @@ const BOX_DROPZONE_ID = "box-dropzone";
 type PokemonIntel = {
   types: string[];
   stats: Array<{ label: string; value: number }>;
+  artworkUrl: string | null;
+  typeDefenses: Array<{ type: string; multiplier: number }>;
 };
 
 type PairIntel = {
@@ -67,6 +70,119 @@ const typeColorMap: Record<string, string> = {
   steel: "bg-gray-500/30 text-gray-200",
   fairy: "bg-fuchsia-500/30 text-fuchsia-200",
 };
+
+const ALL_ATTACK_TYPES = [
+  "normal",
+  "fire",
+  "water",
+  "electric",
+  "grass",
+  "ice",
+  "fighting",
+  "poison",
+  "ground",
+  "flying",
+  "psychic",
+  "bug",
+  "rock",
+  "ghost",
+  "dragon",
+  "dark",
+  "steel",
+  "fairy",
+];
+
+const typeDefenseCache = new Map<
+  string,
+  {
+    doubleDamageFrom: string[];
+    halfDamageFrom: string[];
+    noDamageFrom: string[];
+  }
+>();
+
+function getStatBarColor(value: number) {
+  if (value < 60) return "bg-orange-500";
+  if (value < 90) return "bg-yellow-500";
+  if (value < 120) return "bg-lime-400";
+  if (value < 145) return "bg-green-500";
+  return "bg-sky-400";
+}
+
+function formatMultiplier(value: number) {
+  if (value === 0) return "0x";
+  if (Number.isInteger(value)) return `${value}x`;
+  return `${value.toFixed(1)}x`;
+}
+
+function getDefenseTone(multiplier: number) {
+  if (multiplier < 1) {
+    return {
+      container: "border-emerald-500/35 bg-emerald-500/10",
+      value: "text-emerald-200",
+    };
+  }
+
+  if (multiplier > 1) {
+    return {
+      container: "border-red-500/35 bg-red-500/10",
+      value: "text-red-200",
+    };
+  }
+
+  return {
+    container: "border-slate-700/60 bg-slate-900/60",
+    value: "text-slate-300",
+  };
+}
+
+function toDisplayNameUpper(value: string) {
+  return value.replaceAll("-", " ").toUpperCase();
+}
+
+async function getTypeDefenseProfile(typeName: string, signal: AbortSignal) {
+  if (typeDefenseCache.has(typeName)) {
+    return typeDefenseCache.get(typeName)!;
+  }
+
+  const response = await fetch(`https://pokeapi.co/api/v2/type/${typeName}`, { signal });
+  if (!response.ok) {
+    throw new Error(`Unable to fetch type profile for ${typeName}`);
+  }
+
+  const payload = await response.json();
+  const profile = {
+    doubleDamageFrom: payload.damage_relations.double_damage_from.map(
+      (entry: { name: string }) => entry.name,
+    ),
+    halfDamageFrom: payload.damage_relations.half_damage_from.map((entry: { name: string }) => entry.name),
+    noDamageFrom: payload.damage_relations.no_damage_from.map((entry: { name: string }) => entry.name),
+  };
+
+  typeDefenseCache.set(typeName, profile);
+  return profile;
+}
+
+/*
+Input: Defender typing list from PokeAPI (e.g. ['water', 'flying']).
+Transformation: Uses type damage relations from the PokeAPI `/type/{name}` endpoints to multiply
+incoming effectiveness for each attacking type across both defender types.
+Output: A full attack-type multiplier grid (0x, 0.5x, 1x, 2x, 4x) used by the Intel panel.
+*/
+async function computeTypeDefenses(defenderTypes: string[], signal: AbortSignal) {
+  const profiles = await Promise.all(defenderTypes.map((typeName) => getTypeDefenseProfile(typeName, signal)));
+
+  return ALL_ATTACK_TYPES.map((attackType) => {
+    const multiplier = profiles.reduce((current, profile) => {
+      if (profile.noDamageFrom.includes(attackType)) return current * 0;
+      if (profile.doubleDamageFrom.includes(attackType)) return current * 2;
+      if (profile.halfDamageFrom.includes(attackType)) return current * 0.5;
+      return current;
+    }, 1);
+
+    return { type: attackType, multiplier };
+  });
+}
 
 type DroppableGridProps = {
   id: string;
@@ -109,6 +225,30 @@ type EncounterCardBodyProps = {
   isReleasePending: boolean;
   dragHandle: React.ReactNode;
 };
+
+const pokemonSpriteCache = new Map<string, string | null>();
+
+function toPokemonSlug(value: string) {
+  return value.trim().toLowerCase();
+}
+
+async function fetchPokemonSprite(pokemonName: string, signal?: AbortSignal) {
+  const slug = toPokemonSlug(pokemonName);
+  if (pokemonSpriteCache.has(slug)) {
+    return pokemonSpriteCache.get(slug) ?? null;
+  }
+
+  const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${slug}`, { signal });
+  if (!response.ok) {
+    pokemonSpriteCache.set(slug, null);
+    return null;
+  }
+
+  const payload = await response.json();
+  const spriteUrl: string | null = payload.sprites.front_default;
+  pokemonSpriteCache.set(slug, spriteUrl);
+  return spriteUrl;
+}
 
 function EncounterCardBody({
   encounter,
@@ -175,53 +315,6 @@ function EncounterCardBody({
   );
 }
 
-function DraggableEncounterCard({
-  encounter,
-  actionLabel,
-  onAction,
-  onRelease,
-  onSelect,
-  isActionPending,
-  isReleasePending,
-  isSelected,
-}: EncounterCardProps) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: encounter.id,
-    data: { inParty: encounter.is_in_party },
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Translate.toString(transform), transition: "transform 160ms ease" }}
-      onClick={onSelect}
-      className={`h-full min-h-[260px] rounded-lg border border-emerald-500/20 bg-slate-950/70 ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isDragging ? "opacity-50 scale-105" : ""}`}
-    >
-      <EncounterCardBody
-        encounter={encounter}
-        actionLabel={actionLabel}
-        onAction={onAction}
-        onRelease={onRelease}
-        isActionPending={isActionPending}
-        isReleasePending={isReleasePending}
-        dragHandle={
-          <button
-            type="button"
-            {...listeners}
-            {...attributes}
-            onClick={(event) => event.stopPropagation()}
-            className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 px-2 py-1 text-xs text-slate-300 hover:bg-emerald-500/10"
-            aria-label="Drag encounter card"
-          >
-            <GripVertical className="h-3 w-3" />
-            Drag
-          </button>
-        }
-      />
-    </div>
-  );
-}
-
 function SortablePartyCard({
   encounter,
   actionLabel,
@@ -265,6 +358,74 @@ function SortablePartyCard({
           </button>
         }
       />
+    </div>
+  );
+}
+
+type DraggableBoxMiniCardProps = {
+  encounter: EncounterRow;
+  onSelect: () => void;
+  isSelected: boolean;
+};
+
+function DraggableBoxMiniCard({ encounter, onSelect, isSelected }: DraggableBoxMiniCardProps) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: encounter.id,
+    data: { inParty: false },
+  });
+  const [spriteA, setSpriteA] = useState<string | null>(null);
+  const [spriteB, setSpriteB] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadSprites = async () => {
+      const [nextA, nextB] = await Promise.all([
+        fetchPokemonSprite(encounter.pokemon_a, controller.signal),
+        fetchPokemonSprite(encounter.pokemon_b, controller.signal),
+      ]);
+
+      if (!controller.signal.aborted) {
+        setSpriteA(nextA);
+        setSpriteB(nextB);
+      }
+    };
+
+    void loadSprites();
+    return () => controller.abort();
+  }, [encounter.pokemon_a, encounter.pokemon_b]);
+
+  return (
+    <div
+      ref={setNodeRef}
+      onClick={onSelect}
+      {...listeners}
+      {...attributes}
+      style={{ transform: CSS.Translate.toString(transform), transition: "transform 160ms ease" }}
+      className={`h-full min-h-[120px] cursor-grab rounded-lg border border-emerald-500/20 bg-slate-950/70 p-3 active:cursor-grabbing ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isDragging ? "opacity-50 scale-105" : ""}`}
+    >
+      <div className="mb-2 flex items-center justify-between">
+        <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] uppercase text-emerald-200">
+          {encounter.location}
+        </span>
+        <Link2 className="h-3.5 w-3.5 text-slate-500" />
+      </div>
+      <div className="flex items-center justify-center gap-2">
+        <div className="grid h-14 w-14 place-items-center rounded-md border border-emerald-500/20 bg-slate-900">
+          {spriteA ? (
+            <Image src={spriteA} alt={`${encounter.pokemon_a} sprite`} width={52} height={52} />
+          ) : (
+            <span className="text-[10px] text-slate-500">N/A</span>
+          )}
+        </div>
+        <div className="grid h-14 w-14 place-items-center rounded-md border border-emerald-500/20 bg-slate-900">
+          {spriteB ? (
+            <Image src={spriteB} alt={`${encounter.pokemon_b} sprite`} width={52} height={52} />
+          ) : (
+            <span className="text-[10px] text-slate-500">N/A</span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -386,12 +547,15 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
       }
 
       const payload = await response.json();
+      const types = payload.types.map((entry: { type: { name: string } }) => entry.type.name);
       return {
-        types: payload.types.map((entry: { type: { name: string } }) => entry.type.name),
+        types,
         stats: payload.stats.map((entry: { base_stat: number; stat: { name: string } }) => ({
           label: entry.stat.name,
           value: entry.base_stat,
         })),
+        artworkUrl: payload.sprites.other?.["official-artwork"]?.front_default ?? null,
+        typeDefenses: await computeTypeDefenses(types, controller.signal),
       };
     };
 
@@ -723,10 +887,23 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                       {intelLoading && <p className="text-sm text-slate-400">Loading intel...</p>}
                       {!intelLoading && pairIntel && (
                         <div className="space-y-4">
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-2">
-                              <p className="text-xs uppercase tracking-[0.12em] text-slate-400">
-                                {selectedPair.pokemon_a}
+                          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="space-y-3 rounded-lg border border-emerald-500/20 bg-slate-950/40 p-3">
+                              <div className="grid place-items-center rounded-lg border border-emerald-500/20 bg-slate-900/60 p-2">
+                                {pairIntel.pokemonA.artworkUrl ? (
+                                  <Image
+                                    src={pairIntel.pokemonA.artworkUrl}
+                                    alt={`${selectedPair.pokemon_a} artwork`}
+                                    width={170}
+                                    height={170}
+                                    className="h-36 w-36 object-contain"
+                                  />
+                                ) : (
+                                  <p className="text-xs text-slate-500">No artwork</p>
+                                )}
+                              </div>
+                              <p className="text-xs font-semibold tracking-[0.16em] text-slate-100">
+                                {toDisplayNameUpper(selectedPair.pokemon_a)}
                               </p>
                               <div className="flex flex-wrap gap-1">
                                 {pairIntel.pokemonA.types.map((type) => (
@@ -738,10 +915,40 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                                   </span>
                                 ))}
                               </div>
+                              <div className="space-y-2">
+                                {pairIntel.pokemonA.stats.map((stat) => (
+                                  <div key={`a-stat-${stat.label}`}>
+                                    <div className="mb-1 flex items-center justify-between text-[10px] uppercase text-slate-400">
+                                      <span>{stat.label.replaceAll("-", " ")}</span>
+                                      <span>{stat.value}</span>
+                                    </div>
+                                    <div className="h-2 rounded bg-slate-800">
+                                      <div
+                                        className={`h-full rounded ${getStatBarColor(stat.value)}`}
+                                        style={{ width: `${Math.min(100, (stat.value / 180) * 100)}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                            <div className="space-y-2">
-                              <p className="text-xs uppercase tracking-[0.12em] text-slate-400">
-                                {selectedPair.pokemon_b}
+
+                            <div className="space-y-3 rounded-lg border border-emerald-500/20 bg-slate-950/40 p-3">
+                              <div className="grid place-items-center rounded-lg border border-emerald-500/20 bg-slate-900/60 p-2">
+                                {pairIntel.pokemonB.artworkUrl ? (
+                                  <Image
+                                    src={pairIntel.pokemonB.artworkUrl}
+                                    alt={`${selectedPair.pokemon_b} artwork`}
+                                    width={170}
+                                    height={170}
+                                    className="h-36 w-36 object-contain"
+                                  />
+                                ) : (
+                                  <p className="text-xs text-slate-500">No artwork</p>
+                                )}
+                              </div>
+                              <p className="text-xs font-semibold tracking-[0.16em] text-slate-100">
+                                {toDisplayNameUpper(selectedPair.pokemon_b)}
                               </p>
                               <div className="flex flex-wrap gap-1">
                                 {pairIntel.pokemonB.types.map((type) => (
@@ -753,41 +960,77 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                                   </span>
                                 ))}
                               </div>
+                              <div className="space-y-2">
+                                {pairIntel.pokemonB.stats.map((stat) => (
+                                  <div key={`b-stat-${stat.label}`}>
+                                    <div className="mb-1 flex items-center justify-between text-[10px] uppercase text-slate-400">
+                                      <span>{stat.label.replaceAll("-", " ")}</span>
+                                      <span>{stat.value}</span>
+                                    </div>
+                                    <div className="h-2 rounded bg-slate-800">
+                                      <div
+                                        className={`h-full rounded ${getStatBarColor(stat.value)}`}
+                                        style={{ width: `${Math.min(100, (stat.value / 180) * 100)}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-2">
-                              {pairIntel.pokemonA.stats.map((stat) => (
-                                <div key={`a-stat-${stat.label}`}>
-                                  <div className="mb-1 flex items-center justify-between text-[10px] uppercase text-slate-400">
-                                    <span>{stat.label.replaceAll("-", " ")}</span>
-                                    <span>{stat.value}</span>
-                                  </div>
-                                  <div className="h-1.5 rounded bg-slate-800">
+                          <div className="space-y-3">
+                            <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Type Defenses</p>
+                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                              <div className="rounded-lg border border-emerald-500/20 bg-slate-950/40 p-3">
+                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-300">
+                                  {toDisplayNameUpper(selectedPair.pokemon_a)}
+                                </p>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {pairIntel.pokemonA.typeDefenses.map((defense) => (
                                     <div
-                                      className="h-full rounded bg-emerald-400"
-                                      style={{ width: `${Math.min(100, (stat.value / 180) * 100)}%` }}
-                                    />
-                                  </div>
+                                      key={`a-defense-${defense.type}`}
+                                      className={`rounded-md border p-1.5 text-center ${getDefenseTone(defense.multiplier).container}`}
+                                    >
+                                      <p
+                                        className={`rounded px-1 py-0.5 text-[9px] uppercase ${typeColorMap[defense.type] ?? "bg-slate-700/30 text-slate-200"}`}
+                                      >
+                                        {defense.type.slice(0, 3)}
+                                      </p>
+                                      <p
+                                        className={`mt-1 text-[10px] ${getDefenseTone(defense.multiplier).value}`}
+                                      >
+                                        {formatMultiplier(defense.multiplier)}
+                                      </p>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
-                            </div>
-                            <div className="space-y-2">
-                              {pairIntel.pokemonB.stats.map((stat) => (
-                                <div key={`b-stat-${stat.label}`}>
-                                  <div className="mb-1 flex items-center justify-between text-[10px] uppercase text-slate-400">
-                                    <span>{stat.label.replaceAll("-", " ")}</span>
-                                    <span>{stat.value}</span>
-                                  </div>
-                                  <div className="h-1.5 rounded bg-slate-800">
+                              </div>
+
+                              <div className="rounded-lg border border-emerald-500/20 bg-slate-950/40 p-3">
+                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-300">
+                                  {toDisplayNameUpper(selectedPair.pokemon_b)}
+                                </p>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {pairIntel.pokemonB.typeDefenses.map((defense) => (
                                     <div
-                                      className="h-full rounded bg-emerald-400"
-                                      style={{ width: `${Math.min(100, (stat.value / 180) * 100)}%` }}
-                                    />
-                                  </div>
+                                      key={`b-defense-${defense.type}`}
+                                      className={`rounded-md border p-1.5 text-center ${getDefenseTone(defense.multiplier).container}`}
+                                    >
+                                      <p
+                                        className={`rounded px-1 py-0.5 text-[9px] uppercase ${typeColorMap[defense.type] ?? "bg-slate-700/30 text-slate-200"}`}
+                                      >
+                                        {defense.type.slice(0, 3)}
+                                      </p>
+                                      <p
+                                        className={`mt-1 text-[10px] ${getDefenseTone(defense.multiplier).value}`}
+                                      >
+                                        {formatMultiplier(defense.multiplier)}
+                                      </p>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -807,7 +1050,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                 <CardContent>
                   <DroppableGrid
                     id={BOX_DROPZONE_ID}
-                    className="grid min-h-[300px] gap-3 rounded-xl md:grid-cols-2 xl:grid-cols-3"
+                    className="grid min-h-[300px] gap-2 rounded-xl sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5"
                   >
                     {boxedAliveEncounters.length === 0 && (
                       <div className="grid h-full min-h-[260px] place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 p-4 text-center">
@@ -816,15 +1059,10 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                     )}
                     {boxedAliveEncounters.length > 0 &&
                       boxedAliveEncounters.map((encounter) => (
-                        <DraggableEncounterCard
+                        <DraggableBoxMiniCard
                           key={`pc-${encounter.id}`}
                           encounter={encounter}
-                          actionLabel="Move to Party"
-                          onAction={() => void moveEncounter(encounter.id, true)}
-                          onRelease={() => void releaseEncounter(encounter.id)}
                           onSelect={() => setSelectedPairId(encounter.id)}
-                          isActionPending={pendingEncounterIds.includes(encounter.id)}
-                          isReleasePending={releasingEncounterIds.includes(encounter.id)}
                           isSelected={selectedPairId === encounter.id}
                         />
                       ))}
