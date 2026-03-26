@@ -124,7 +124,15 @@ function getStatBarColor(value: number) {
 function formatMultiplier(value: number) {
   if (value === 0) return "0x";
   if (Number.isInteger(value)) return `${value}x`;
-  return `${value.toFixed(1)}x`;
+
+  // Preserve quarter steps (0.25, 0.5, 0.75, etc.) without over-rounding to a single decimal.
+  const roundedToQuarter = Math.round(value * 4) / 4;
+  if (Math.abs(value - roundedToQuarter) < 0.001) {
+    return `${roundedToQuarter.toString()}x`;
+  }
+
+  const trimmed = Number(value.toFixed(2)).toString();
+  return `${trimmed}x`;
 }
 
 function getDefenseTone(multiplier: number) {
