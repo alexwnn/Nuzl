@@ -377,6 +377,44 @@ type DraggableBoxMiniCardProps = {
   isSelected: boolean;
 };
 
+type BoxMiniCardProps = {
+  encounter: EncounterRow;
+  spriteA: string | null;
+  spriteB: string | null;
+  isSelected: boolean;
+  isDragging: boolean;
+};
+
+function BoxMiniCard({ encounter, spriteA, spriteB, isSelected, isDragging }: BoxMiniCardProps) {
+  return (
+    <div
+      className={`h-32 rounded-lg border border-slate-700/70 bg-slate-950/85 p-2 transition duration-150 hover:scale-[1.02] hover:border-emerald-500/35 ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isDragging ? "scale-105 opacity-50" : ""}`}
+    >
+      <div className="mb-2 flex items-center justify-start">
+        <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] uppercase text-emerald-200">
+          {encounter.location}
+        </span>
+      </div>
+      <div className="flex items-center justify-center gap-2">
+        <div className="grid h-14 w-14 place-items-center rounded-md border border-emerald-500/20 bg-slate-900">
+          {spriteA ? (
+            <Image src={spriteA} alt={`${encounter.pokemon_a} sprite`} width={52} height={52} />
+          ) : (
+            <span className="text-[10px] text-slate-500">N/A</span>
+          )}
+        </div>
+        <div className="grid h-14 w-14 place-items-center rounded-md border border-emerald-500/20 bg-slate-900">
+          {spriteB ? (
+            <Image src={spriteB} alt={`${encounter.pokemon_b} sprite`} width={52} height={52} />
+          ) : (
+            <span className="text-[10px] text-slate-500">N/A</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DraggableBoxMiniCard({ encounter, onSelect, isSelected }: DraggableBoxMiniCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: encounter.id,
@@ -416,30 +454,15 @@ function DraggableBoxMiniCard({ encounter, onSelect, isSelected }: DraggableBoxM
       {...listeners}
       {...attributes}
       style={{ transform: CSS.Translate.toString(transform), transition: "transform 160ms ease" }}
-      className={`h-full min-h-[120px] cursor-grab rounded-lg border border-emerald-500/20 bg-slate-950/70 p-3 active:cursor-grabbing ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isDragging ? "opacity-50 scale-105" : ""}`}
+      className="cursor-grab active:cursor-grabbing"
     >
-      <div className="mb-2 flex items-center justify-between">
-        <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] uppercase text-emerald-200">
-          {encounter.location}
-        </span>
-        <Link2 className="h-3.5 w-3.5 text-slate-500" />
-      </div>
-      <div className="flex items-center justify-center gap-2">
-        <div className="grid h-14 w-14 place-items-center rounded-md border border-emerald-500/20 bg-slate-900">
-          {spriteA ? (
-            <Image src={spriteA} alt={`${encounter.pokemon_a} sprite`} width={52} height={52} />
-          ) : (
-            <span className="text-[10px] text-slate-500">N/A</span>
-          )}
-        </div>
-        <div className="grid h-14 w-14 place-items-center rounded-md border border-emerald-500/20 bg-slate-900">
-          {spriteB ? (
-            <Image src={spriteB} alt={`${encounter.pokemon_b} sprite`} width={52} height={52} />
-          ) : (
-            <span className="text-[10px] text-slate-500">N/A</span>
-          )}
-        </div>
-      </div>
+      <BoxMiniCard
+        encounter={encounter}
+        spriteA={spriteA}
+        spriteB={spriteB}
+        isSelected={isSelected}
+        isDragging={isDragging}
+      />
     </div>
   );
 }
@@ -830,10 +853,10 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                   <CardContent>
                     <DroppableGrid
                       id={BOX_DROPZONE_ID}
-                      className="grid min-h-[300px] gap-2 rounded-xl sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5"
+                      className="grid min-h-[300px] grid-cols-2 gap-2 rounded-xl md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6"
                     >
                       {boxedAliveEncounters.length === 0 && (
-                        <div className="grid h-full min-h-[260px] place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 p-4 text-center">
+                        <div className="grid h-32 place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 p-4 text-center">
                           <p className="text-xs uppercase tracking-[0.12em] text-slate-500">EMPTY SLOT</p>
                         </div>
                       )}
