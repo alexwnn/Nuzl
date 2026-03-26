@@ -4,14 +4,16 @@ import Image from "next/image";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   rectIntersection,
-  useDraggable,
   useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -37,6 +39,8 @@ type DashboardContentProps = {
 
 const PARTY_DROPZONE_ID = "party-dropzone";
 const BOX_DROPZONE_ID = "box-dropzone";
+const BOX_EMPTY_SLOT_PREFIX = "box-empty-slot-";
+const BOX_COLUMNS = 6;
 
 type PokemonIntel = {
   types: string[];
@@ -222,6 +226,7 @@ type EncounterCardProps = {
   isActionPending: boolean;
   isReleasePending: boolean;
   isSelected: boolean;
+  isSwapTarget?: boolean;
 };
 
 type EncounterCardBodyProps = {
@@ -332,6 +337,7 @@ function SortablePartyCard({
   isActionPending,
   isReleasePending,
   isSelected,
+  isSwapTarget = false,
 }: EncounterCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: encounter.id,
@@ -344,7 +350,7 @@ function SortablePartyCard({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={onSelect}
-      className={`h-full min-h-[260px] rounded-lg border border-emerald-500/20 bg-slate-950/70 ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isDragging ? "opacity-50 scale-105" : ""}`}
+      className={`h-full min-h-[260px] rounded-lg border border-emerald-500/20 bg-slate-950/70 ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isSwapTarget ? "ring-2 ring-emerald-300 shadow-[0_0_0_2px_rgba(52,211,153,0.35)]" : ""} ${isDragging ? "opacity-30 scale-105" : ""}`}
     >
       <EncounterCardBody
         encounter={encounter}
@@ -371,10 +377,11 @@ function SortablePartyCard({
   );
 }
 
-type DraggableBoxMiniCardProps = {
+type SortableBoxMiniCardProps = {
   encounter: EncounterRow;
   onSelect: () => void;
   isSelected: boolean;
+  isSwapTarget?: boolean;
 };
 
 type BoxMiniCardProps = {
@@ -383,12 +390,20 @@ type BoxMiniCardProps = {
   spriteB: string | null;
   isSelected: boolean;
   isDragging: boolean;
+  isSwapTarget?: boolean;
 };
 
-function BoxMiniCard({ encounter, spriteA, spriteB, isSelected, isDragging }: BoxMiniCardProps) {
+function BoxMiniCard({
+  encounter,
+  spriteA,
+  spriteB,
+  isSelected,
+  isDragging,
+  isSwapTarget = false,
+}: BoxMiniCardProps) {
   return (
     <div
-      className={`h-32 rounded-lg border border-slate-700/70 bg-slate-950/85 p-2 transition duration-150 hover:scale-[1.02] hover:border-emerald-500/35 ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isDragging ? "scale-105 opacity-50" : ""}`}
+      className={`h-32 rounded-lg border border-slate-700/70 bg-slate-950/85 p-2 transition duration-150 hover:scale-[1.02] hover:border-emerald-500/35 ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isSwapTarget ? "ring-2 ring-emerald-300 shadow-[0_0_0_2px_rgba(52,211,153,0.35)]" : ""} ${isDragging ? "scale-105 opacity-30" : ""}`}
     >
       <div className="mb-2 flex items-center justify-start">
         <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] uppercase text-emerald-200">
@@ -415,11 +430,17 @@ function BoxMiniCard({ encounter, spriteA, spriteB, isSelected, isDragging }: Bo
   );
 }
 
-function DraggableBoxMiniCard({ encounter, onSelect, isSelected }: DraggableBoxMiniCardProps) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+function SortableBoxMiniCard({
+  encounter,
+  onSelect,
+  isSelected,
+  isSwapTarget = false,
+}: SortableBoxMiniCardProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: encounter.id,
     data: { inParty: false },
   });
+  const mounted = useHasMounted();
   const [spriteA, setSpriteA] = useState<string | null>(null);
   const [spriteB, setSpriteB] = useState<string | null>(null);
 
@@ -451,9 +472,9 @@ function DraggableBoxMiniCard({ encounter, onSelect, isSelected }: DraggableBoxM
     <div
       ref={setNodeRef}
       onClick={onSelect}
-      {...listeners}
-      {...attributes}
-      style={{ transform: CSS.Translate.toString(transform), transition: "transform 160ms ease" }}
+      {...(mounted ? listeners : {})}
+      {...(mounted ? attributes : {})}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
       className="cursor-grab active:cursor-grabbing"
     >
       <BoxMiniCard
@@ -462,7 +483,48 @@ function DraggableBoxMiniCard({ encounter, onSelect, isSelected }: DraggableBoxM
         spriteB={spriteB}
         isSelected={isSelected}
         isDragging={isDragging}
+        isSwapTarget={isSwapTarget}
       />
+    </div>
+  );
+}
+
+function PairDragPreview({ encounter }: { encounter: EncounterRow }) {
+  return (
+    <div className="w-[280px] rounded-lg border border-emerald-400/40 bg-slate-950/95 p-3 shadow-[0_14px_40px_-14px_rgba(16,185,129,0.65)]">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[11px] text-emerald-300">
+          {encounter.location ?? "Unknown"}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <PokemonNameplate
+          pokemonName={encounter.pokemon_a ?? "Unknown"}
+          nickname={encounter.nickname_a}
+          ability={encounter.ability_a}
+        />
+        <div className="grid place-items-center pt-6 text-slate-500">
+          <Link2 className="h-4 w-4" />
+        </div>
+        <PokemonNameplate
+          pokemonName={encounter.pokemon_b ?? "Unknown"}
+          nickname={encounter.nickname_b}
+          ability={encounter.ability_b}
+        />
+      </div>
+    </div>
+  );
+}
+
+function BoxEmptySlot({ index }: { index: number }) {
+  const { setNodeRef, isOver } = useDroppable({ id: `${BOX_EMPTY_SLOT_PREFIX}${index}` });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`grid h-32 place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 p-4 text-center transition ${isOver ? "border-emerald-500/40 bg-emerald-500/10" : ""}`}
+    >
+      <p className="text-xs uppercase tracking-[0.12em] text-slate-500">EMPTY SLOT</p>
     </div>
   );
 }
@@ -514,6 +576,8 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   const [releasingEncounterIds, setReleasingEncounterIds] = useState<string[]>([]);
   const [pairIntel, setPairIntel] = useState<PairIntel | null>(null);
   const [intelLoading, setIntelLoading] = useState(false);
+  const [activeDragId, setActiveDragId] = useState<string | null>(null);
+  const [hoveredSwapTargetId, setHoveredSwapTargetId] = useState<string | null>(null);
 
   useEffect(() => {
     const channel = supabase
@@ -552,10 +616,25 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   const activeTeam = orderedPartyEncounters.slice(0, 6);
   const partyIds = activeTeam.map((encounter) => encounter.id);
   const partySlots = Array.from({ length: 6 }, (_, index) => activeTeam[index] ?? null);
-  const boxedAliveEncounters = aliveEncounters.filter((encounter) => !encounter.is_in_party);
+  const boxedAliveEncounters = aliveEncounters
+    .filter((encounter) => !encounter.is_in_party)
+    .sort((a, b) => {
+      const aIndex = a.order_index ?? Number.MAX_SAFE_INTEGER;
+      const bIndex = b.order_index ?? Number.MAX_SAFE_INTEGER;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+      return a.created_at.localeCompare(b.created_at);
+    });
   const boxedIds = boxedAliveEncounters.map((encounter) => encounter.id);
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor));
+  const boxSlotCount = Math.ceil((boxedAliveEncounters.length + BOX_COLUMNS) / BOX_COLUMNS) * BOX_COLUMNS;
+  const boxSlots = Array.from({ length: boxSlotCount }, (_, index) => boxedAliveEncounters[index] ?? null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor),
+  );
   const selectedPair = selectedPairId ? encounters.find((encounter) => encounter.id === selectedPairId) ?? null : null;
+  const activeDragEncounter = activeDragId
+    ? encounters.find((encounter) => encounter.id === activeDragId) ?? null
+    : null;
 
   useEffect(() => {
     if (!selectedPairId) return;
@@ -620,40 +699,36 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
     return () => controller.abort();
   }, [selectedPair]);
 
-  /*
-  Input: Party encounter IDs in their intended visual order + optional IDs moved to box.
-  Transformation: Rewrites local `is_in_party`/`order_index` fields so party order is compacted from top to bottom.
-  Output: Returns next encounter state with gravity/compaction applied before server confirmation.
-  */
-  function applyPartyLayoutOptimistically(
+  function applyEncounterLayoutOptimistically(
     current: EncounterRow[],
     nextPartyIds: string[],
-    movedOutIds: string[] = [],
+    nextBoxIds: string[],
   ) {
-    const orderMap = new Map(nextPartyIds.map((id, index) => [id, index]));
-    const movedOutSet = new Set(movedOutIds);
+    const partyOrderMap = new Map(nextPartyIds.map((id, index) => [id, index]));
+    const boxOrderMap = new Map(nextBoxIds.map((id, index) => [id, index]));
 
     return current.map((entry) => {
-      const nextIndex = orderMap.get(entry.id);
-      if (nextIndex !== undefined) {
-        return { ...entry, is_in_party: true, order_index: nextIndex };
+      const nextPartyIndex = partyOrderMap.get(entry.id);
+      if (nextPartyIndex !== undefined) {
+        return { ...entry, is_in_party: true, order_index: nextPartyIndex };
       }
 
-      if (movedOutSet.has(entry.id)) {
-        return { ...entry, is_in_party: false, order_index: null };
+      const nextBoxIndex = boxOrderMap.get(entry.id);
+      if (nextBoxIndex !== undefined) {
+        return { ...entry, is_in_party: false, order_index: nextBoxIndex };
       }
 
       return entry;
     });
   }
 
-  async function persistPartyLayout(nextPartyIds: string[], movedOutIds: string[] = []) {
+  async function persistEncounterLayout(nextPartyIds: string[], nextBoxIds: string[]) {
     const updates = [
       ...nextPartyIds.map((id, index) =>
         supabase.from("encounters").update({ is_in_party: true, order_index: index }).eq("id", id),
       ),
-      ...movedOutIds.map((id) =>
-        supabase.from("encounters").update({ is_in_party: false, order_index: null }).eq("id", id),
+      ...nextBoxIds.map((id, index) =>
+        supabase.from("encounters").update({ is_in_party: false, order_index: index }).eq("id", id),
       ),
     ];
 
@@ -664,8 +739,8 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
     }
   }
 
-  async function commitPartyLayout(nextPartyIds: string[], movedOutIds: string[] = []) {
-    const impactedIds = [...nextPartyIds, ...movedOutIds];
+  async function commitEncounterLayout(nextPartyIds: string[], nextBoxIds: string[]) {
+    const impactedIds = [...nextPartyIds, ...nextBoxIds];
     if (impactedIds.length === 0) return;
 
     const previous = encounters;
@@ -673,14 +748,14 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
     setPendingEncounterIds((current) => [...new Set([...current, ...impactedIds])]);
 
     // Use optimistic ordering first so dnd-kit animations (arrayMove) feel immediate.
-    setEncounters((current) => applyPartyLayoutOptimistically(current, nextPartyIds, movedOutIds));
+    setEncounters((current) => applyEncounterLayoutOptimistically(current, nextPartyIds, nextBoxIds));
 
     try {
-      await persistPartyLayout(nextPartyIds, movedOutIds);
+      await persistEncounterLayout(nextPartyIds, nextBoxIds);
     } catch (error) {
       setEncounters(previous);
       const message = error instanceof Error ? error.message : "Unknown error";
-      setActionError(`Failed to update party order: ${message}`);
+      setActionError(`Failed to update encounter layout: ${message}`);
     } finally {
       setPendingEncounterIds((current) => current.filter((id) => !impactedIds.includes(id)));
     }
@@ -700,12 +775,14 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
       }
 
       const nextPartyIds = [...partyIds, encounterId];
-      await commitPartyLayout(nextPartyIds);
+      const nextBoxIds = boxedIds.filter((id) => id !== encounterId);
+      await commitEncounterLayout(nextPartyIds, nextBoxIds);
       return;
     }
 
     const compactedPartyIds = partyIds.filter((id) => id !== encounterId);
-    await commitPartyLayout(compactedPartyIds, [encounterId]);
+    const nextBoxIds = boxedIds.includes(encounterId) ? boxedIds : [...boxedIds, encounterId];
+    await commitEncounterLayout(compactedPartyIds, nextBoxIds);
   }
 
   async function releaseEncounter(encounterId: string) {
@@ -728,49 +805,132 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
     setReleasingEncounterIds((current) => current.filter((id) => id !== encounterId));
   }
 
+  function handleDragStart(event: DragStartEvent) {
+    setActiveDragId(String(event.active.id));
+    setHoveredSwapTargetId(null);
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    if (!event.over) {
+      setHoveredSwapTargetId(null);
+      return;
+    }
+
+    const overId = String(event.over.id);
+    if (
+      overId === PARTY_DROPZONE_ID ||
+      overId === BOX_DROPZONE_ID ||
+      overId.startsWith(BOX_EMPTY_SLOT_PREFIX)
+    ) {
+      setHoveredSwapTargetId(null);
+      return;
+    }
+
+    setHoveredSwapTargetId(overId);
+  }
+
+  function handleDragCancel() {
+    setActiveDragId(null);
+    setHoveredSwapTargetId(null);
+  }
+
   /*
-  Input: dnd-kit drag end event containing the dragged card id and target dropzone id.
-  Transformation: Determines destination (party/box) and calls moveEncounter, which performs
-  an optimistic UI update first so cards visually move immediately before Supabase confirms.
-  Output: Persisted `is_in_party` value in Supabase and synchronized dashboard sections.
+  Input: dnd-kit drag end event containing active card id and target dropzone/card id.
+  Transformation: Handles party reordering, box reordering, party<->box moves, and cross-swaps.
+  Output: Persists both `is_in_party` and `order_index` so custom layout survives refreshes.
   */
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    if (!over) return;
+    if (!over) {
+      setActiveDragId(null);
+      setHoveredSwapTargetId(null);
+      return;
+    }
     const activeId = String(active.id);
     const overId = String(over.id);
 
-    const activeIsParty = partyIds.includes(activeId);
-    const overIsParty = overId === PARTY_DROPZONE_ID || partyIds.includes(overId);
-    const overIsBox = overId === BOX_DROPZONE_ID || boxedIds.includes(overId);
+    try {
+      const activeIsParty = partyIds.includes(activeId);
+      const overIsParty = overId === PARTY_DROPZONE_ID || partyIds.includes(overId);
+      const overIsBox =
+        overId === BOX_DROPZONE_ID || boxedIds.includes(overId) || overId.startsWith(BOX_EMPTY_SLOT_PREFIX);
 
-    if (activeIsParty && overIsParty) {
-      if (overId === PARTY_DROPZONE_ID) return;
+      if (activeIsParty && overIsParty) {
+        if (overId === PARTY_DROPZONE_ID) return;
 
-      const oldIndex = partyIds.indexOf(activeId);
-      const newIndex = partyIds.indexOf(overId);
-      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+        const oldIndex = partyIds.indexOf(activeId);
+        const newIndex = partyIds.indexOf(overId);
+        if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
 
-      const reorderedPartyIds = arrayMove(partyIds, oldIndex, newIndex);
-      await commitPartyLayout(reorderedPartyIds);
-      return;
-    }
-
-    if (activeIsParty && overIsBox) {
-      const compactedPartyIds = partyIds.filter((id) => id !== activeId);
-      await commitPartyLayout(compactedPartyIds, [activeId]);
-      return;
-    }
-
-    if (!activeIsParty && overIsParty) {
-      if (partyIds.length >= 6) {
-        toast.error("Party is full!");
-        setActionError("Party is full (6). Move one pair to box first.");
+        const reorderedPartyIds = arrayMove(partyIds, oldIndex, newIndex);
+        await commitEncounterLayout(reorderedPartyIds, boxedIds);
         return;
       }
 
-      const nextPartyIds = [...partyIds, activeId];
-      await commitPartyLayout(nextPartyIds);
+      if (activeIsParty && overIsBox) {
+        const compactedPartyIds = partyIds.filter((id) => id !== activeId);
+        const overBoxIndex = boxedIds.indexOf(overId);
+        const overEmptySlotIndex = overId.startsWith(BOX_EMPTY_SLOT_PREFIX)
+          ? Number(overId.replace(BOX_EMPTY_SLOT_PREFIX, ""))
+          : Number.NaN;
+        const insertAt =
+          overBoxIndex >= 0
+            ? overBoxIndex
+            : Number.isNaN(overEmptySlotIndex)
+              ? boxedIds.length
+              : Math.min(overEmptySlotIndex, boxedIds.length);
+        const nextBoxIds = [...boxedIds];
+        nextBoxIds.splice(insertAt, 0, activeId);
+        await commitEncounterLayout(compactedPartyIds, nextBoxIds);
+        return;
+      }
+
+      if (!activeIsParty && overIsParty) {
+        if (partyIds.includes(overId)) {
+          const targetIndex = partyIds.indexOf(overId);
+          if (targetIndex < 0) return;
+
+          const nextPartyIds = [...partyIds];
+          nextPartyIds[targetIndex] = activeId;
+
+          // Dual mutation: dragged box pair enters party slot, replaced party pair is inserted back into box.
+          const nextBoxIds = boxedIds.filter((id) => id !== activeId);
+          nextBoxIds.splice(targetIndex, 0, overId);
+          await commitEncounterLayout(nextPartyIds, nextBoxIds);
+          return;
+        }
+
+        if (partyIds.length >= 6) {
+          toast.error("Party is full!");
+          setActionError("Party is full (6). Move one pair to box first.");
+          return;
+        }
+
+        const nextPartyIds = [...partyIds, activeId];
+        const nextBoxIds = boxedIds.filter((id) => id !== activeId);
+        await commitEncounterLayout(nextPartyIds, nextBoxIds);
+        return;
+      }
+
+      if (!activeIsParty && overIsBox) {
+        const oldIndex = boxedIds.indexOf(activeId);
+        if (oldIndex < 0) return;
+
+        let nextIndex = boxedIds.indexOf(overId);
+        if (overId.startsWith(BOX_EMPTY_SLOT_PREFIX)) {
+          const slotIndex = Number(overId.replace(BOX_EMPTY_SLOT_PREFIX, ""));
+          if (!Number.isNaN(slotIndex)) {
+            nextIndex = Math.min(slotIndex, boxedIds.length - 1);
+          }
+        }
+
+        if (nextIndex < 0 || oldIndex === nextIndex) return;
+        const reorderedBoxIds = arrayMove(boxedIds, oldIndex, nextIndex);
+        await commitEncounterLayout(partyIds, reorderedBoxIds);
+      }
+    } finally {
+      setActiveDragId(null);
+      setHoveredSwapTargetId(null);
     }
   }
 
@@ -799,7 +959,14 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
       <div className="mx-auto flex max-w-[1700px]">
         <CollapsibleSidebar />
         <main className="w-full flex-1 px-4 pb-6 pt-20 md:px-6 xl:px-8">
-          <DndContext sensors={sensors} collisionDetection={rectIntersection} onDragEnd={handleDragEnd}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={rectIntersection}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragCancel={handleDragCancel}
+            onDragEnd={handleDragEnd}
+          >
             <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">
               <div className="space-y-4 xl:col-span-7">
                 <Card>
@@ -829,6 +996,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                               isActionPending={pendingEncounterIds.includes(encounter.id)}
                               isReleasePending={releasingEncounterIds.includes(encounter.id)}
                               isSelected={selectedPairId === encounter.id}
+                              isSwapTarget={hoveredSwapTargetId === encounter.id && activeDragId !== encounter.id}
                             />
                           ) : (
                             <div
@@ -855,20 +1023,21 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                       id={BOX_DROPZONE_ID}
                       className="grid min-h-[300px] grid-cols-2 gap-2 rounded-xl md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6"
                     >
-                      {boxedAliveEncounters.length === 0 && (
-                        <div className="grid h-32 place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 p-4 text-center">
-                          <p className="text-xs uppercase tracking-[0.12em] text-slate-500">EMPTY SLOT</p>
-                        </div>
-                      )}
-                      {boxedAliveEncounters.length > 0 &&
-                        boxedAliveEncounters.map((encounter) => (
-                          <DraggableBoxMiniCard
-                            key={`pc-${encounter.id}`}
-                            encounter={encounter}
-                            onSelect={() => setSelectedPairId(encounter.id)}
-                            isSelected={selectedPairId === encounter.id}
-                          />
-                        ))}
+                      <SortableContext items={boxedIds} strategy={rectSortingStrategy}>
+                        {boxSlots.map((encounter, index) =>
+                          encounter ? (
+                            <SortableBoxMiniCard
+                              key={`pc-${encounter.id}`}
+                              encounter={encounter}
+                              onSelect={() => setSelectedPairId(encounter.id)}
+                              isSelected={selectedPairId === encounter.id}
+                              isSwapTarget={hoveredSwapTargetId === encounter.id && activeDragId !== encounter.id}
+                            />
+                          ) : (
+                            <BoxEmptySlot key={`box-empty-slot-${index}`} index={index} />
+                          ),
+                        )}
+                      </SortableContext>
                     </DroppableGrid>
                   </CardContent>
                 </Card>
@@ -908,6 +1077,12 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                               </div>
                               <p className="text-xs font-semibold tracking-[0.16em] text-slate-100">
                                 {toDisplayNameUpper(selectedPair.pokemon_a)}
+                              </p>
+                              <p className="text-xs text-slate-400">
+                                Nickname: {selectedPair.nickname_a?.trim() ? selectedPair.nickname_a : "-"}
+                              </p>
+                              <p className="text-xs text-emerald-200">
+                                Ability: {selectedPair.ability_a?.trim() ? selectedPair.ability_a : "-"}
                               </p>
                               <div className="flex flex-wrap gap-1">
                                 {pairIntel.pokemonA.types.map((type) => (
@@ -953,6 +1128,12 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                               </div>
                               <p className="text-xs font-semibold tracking-[0.16em] text-slate-100">
                                 {toDisplayNameUpper(selectedPair.pokemon_b)}
+                              </p>
+                              <p className="text-xs text-slate-400">
+                                Nickname: {selectedPair.nickname_b?.trim() ? selectedPair.nickname_b : "-"}
+                              </p>
+                              <p className="text-xs text-emerald-200">
+                                Ability: {selectedPair.ability_b?.trim() ? selectedPair.ability_b : "-"}
                               </p>
                               <div className="flex flex-wrap gap-1">
                                 {pairIntel.pokemonB.types.map((type) => (
@@ -1044,6 +1225,13 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                 </CardContent>
               </Card>
             </section>
+            <DragOverlay>
+              {activeDragEncounter ? (
+                <div className="z-[120] pointer-events-none">
+                  <PairDragPreview encounter={activeDragEncounter} />
+                </div>
+              ) : null}
+            </DragOverlay>
           </DndContext>
           {actionError && (
             <p className="mt-3 text-xs text-amber-300">{actionError}</p>
