@@ -40,6 +40,7 @@ export type Database = {
           ability_b: string;
           status: string;
           is_in_party: boolean;
+          is_fainted: boolean;
           order_index: number | null;
           created_at: string;
         };
@@ -55,6 +56,7 @@ export type Database = {
           ability_b: string;
           status: string;
           is_in_party?: boolean;
+          is_fainted?: boolean;
           order_index?: number | null;
           created_at?: string;
         };
@@ -70,6 +72,7 @@ export type Database = {
           ability_b?: string;
           status?: string;
           is_in_party?: boolean;
+          is_fainted?: boolean;
           order_index?: number | null;
           created_at?: string;
         };

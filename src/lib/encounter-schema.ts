@@ -14,8 +14,9 @@ export const encounterInsertSchema = z.object({
   pokemon_b: z.string().trim().min(1).max(40).transform((value) => value.toLowerCase()),
   nickname_b: z.string().trim().min(1).max(40),
   ability_b: z.string().trim().min(1).max(40),
-  status: z.enum(["alive", "dead", "boxed"]),
+  status: z.literal("alive").default("alive"),
   is_in_party: z.boolean().default(false),
+  is_fainted: z.boolean().default(false),
   order_index: z.number().int().nonnegative().nullable().default(null),
 });
 

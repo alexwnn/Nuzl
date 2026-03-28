@@ -51,3 +51,22 @@
     transition: background-color 0.3s ease, color 0.3s ease;
   }
 }
+
+@keyframes sprite-evolve-flash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.9);
+    filter: brightness(1);
+  }
+  45% {
+    box-shadow: 0 0 0 10px rgba(255, 255, 255, 0);
+    filter: brightness(1.7);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+    filter: brightness(1);
+  }
+}
+
+.sprite-evolve-flash {
+  animation: sprite-evolve-flash 260ms ease-out;
+}
