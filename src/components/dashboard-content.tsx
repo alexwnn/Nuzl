@@ -137,6 +137,14 @@ function formatMultiplier(value: number) {
 }
 
 function getDefenseTone(multiplier: number) {
+  if (multiplier === 0) {
+    return {
+      container:
+        "border-slate-700/35 bg-slate-900/10 dark:border-slate-300/35 dark:bg-slate-100/15",
+      value: "text-slate-800 dark:text-slate-200",
+    };
+  }
+
   if (multiplier < 1) {
     return {
       container: "border-emerald-500/35 bg-emerald-500/10",
