@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   DragOverlay,
@@ -15,9 +16,14 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Heart, Link2, Skull, Sparkles, Trash2, Users } from "lucide-react";
+import { Heart, Link2, Pencil, Skull, Sparkles, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { AddEncounterModal } from "@/components/add-encounter-modal";
@@ -112,6 +118,29 @@ function useHasMounted() {
     () => true,
     () => false,
   );
+}
+
+function isTypingTarget(element: Element | null) {
+  if (!(element instanceof HTMLElement)) return false;
+  const tagName = element.tagName;
+  return tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT" || element.isContentEditable;
+}
+
+class SmartKeyboardSensor extends KeyboardSensor {
+  static activators: typeof KeyboardSensor.activators = [
+    {
+      eventName: "onKeyDown" as const,
+      handler: (event, options, context) => {
+        const element = event.target as HTMLElement;
+        if (isTypingTarget(element)) {
+          return false;
+        }
+
+        const baseActivator = KeyboardSensor.activators[0];
+        return baseActivator ? baseActivator.handler(event, options, context) : false;
+      },
+    },
+  ];
 }
 
 function getStatBarColor(value: number) {
@@ -236,10 +265,12 @@ function DroppableGrid({ id, className, children }: DroppableGridProps) {
 
 type EncounterCardProps = {
   encounter: EncounterRow;
+  sessions: SessionRow[];
   actionLabel: "Move to Party" | "Move to Box";
   onAction: () => void;
   onRelease: () => void;
   onToggleFainted: () => void;
+  onEncounterUpdated: (encounter: EncounterRow) => void;
   onEvolveSlot: (slot: "a" | "b", nextPokemon: string) => void;
   onSelect: () => void;
   isActionPending: boolean;
@@ -253,10 +284,12 @@ type EncounterCardProps = {
 
 type EncounterCardBodyProps = {
   encounter: EncounterRow;
+  sessions: SessionRow[];
   actionLabel: "Move to Party" | "Move to Box";
   onAction: () => void;
   onRelease: () => void;
   onToggleFainted: () => void;
+  onEncounterUpdated: (encounter: EncounterRow) => void;
   onEvolveSlot: (slot: "a" | "b", nextPokemon: string) => void;
   isActionPending: boolean;
   isReleasePending: boolean;
@@ -264,7 +297,6 @@ type EncounterCardBodyProps = {
   isEvolvingA: boolean;
   isEvolvingB: boolean;
   isFainted: boolean;
-  dragHandle: React.ReactNode;
 };
 
 const pokemonSpriteCache = new Map<string, string | null>();
@@ -348,10 +380,12 @@ async function fetchEvolutionOptions(pokemonName: string) {
 
 function EncounterCardBody({
   encounter,
+  sessions,
   actionLabel,
   onAction,
   onRelease,
   onToggleFainted,
+  onEncounterUpdated,
   onEvolveSlot,
   isActionPending,
   isReleasePending,
@@ -359,15 +393,44 @@ function EncounterCardBody({
   isEvolvingA,
   isEvolvingB,
   isFainted,
-  dragHandle,
 }: EncounterCardBodyProps) {
   const [openEvolutionMenu, setOpenEvolutionMenu] = useState<"a" | "b" | null>(null);
   const [evolutionOptionsA, setEvolutionOptionsA] = useState<string[]>([]);
   const [evolutionOptionsB, setEvolutionOptionsB] = useState<string[]>([]);
   const [evolutionLoadingSlot, setEvolutionLoadingSlot] = useState<"a" | "b" | null>(null);
   const [evolutionError, setEvolutionError] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const evolutionAreaRef = useRef<HTMLDivElement | null>(null);
   const noEvolutionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const evolutionMenuRef = useRef<HTMLDivElement | null>(null);
+  const evolutionButtonARef = useRef<HTMLButtonElement | null>(null);
+  const evolutionButtonBRef = useRef<HTMLButtonElement | null>(null);
+
+  const recomputeEvolutionMenuPosition = useCallback(
+    (slot: "a" | "b") => {
+      if (typeof window === "undefined") return;
+      const anchor = slot === "a" ? evolutionButtonARef.current : evolutionButtonBRef.current;
+      if (!anchor) return;
+
+      const rect = anchor.getBoundingClientRect();
+      const margin = 12;
+      const menuWidth = 220;
+      const optionsCount = slot === "a" ? evolutionOptionsA.length : evolutionOptionsB.length;
+      const estimatedHeight = Math.min(240, 44 + Math.max(optionsCount, 1) * 32);
+      const shouldOpenUpward = rect.bottom + estimatedHeight > window.innerHeight - margin;
+
+      const top = shouldOpenUpward
+        ? Math.max(margin, rect.top - estimatedHeight - 8)
+        : Math.min(window.innerHeight - estimatedHeight - margin, rect.bottom + 8);
+      const left = Math.min(
+        window.innerWidth - menuWidth - margin,
+        Math.max(margin, rect.left + rect.width / 2 - menuWidth / 2),
+      );
+
+      setMenuPosition({ top, left });
+    },
+    [evolutionOptionsA, evolutionOptionsB],
+  );
 
   useEffect(() => {
     if (!openEvolutionMenu) return;
@@ -375,7 +438,9 @@ function EncounterCardBody({
     const handleOutsidePointer = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (!evolutionAreaRef.current?.contains(target)) {
+      const clickedInsideCardArea = evolutionAreaRef.current?.contains(target);
+      const clickedInsideMenu = evolutionMenuRef.current?.contains(target);
+      if (!clickedInsideCardArea && !clickedInsideMenu) {
         setOpenEvolutionMenu(null);
         setEvolutionError(null);
       }
@@ -392,6 +457,23 @@ function EncounterCardBody({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!openEvolutionMenu) {
+      setMenuPosition(null);
+      return;
+    }
+
+    const updatePosition = () => recomputeEvolutionMenuPosition(openEvolutionMenu);
+    updatePosition();
+
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [openEvolutionMenu, recomputeEvolutionMenuPosition]);
 
   async function handleOpenEvolutionMenu(slot: "a" | "b") {
     const pokemonName = slot === "a" ? encounter.pokemon_a : encounter.pokemon_b;
@@ -443,6 +525,7 @@ function EncounterCardBody({
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
               onToggleFainted();
@@ -455,6 +538,7 @@ function EncounterCardBody({
           </button>
           <button
             type="button"
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
               onRelease();
@@ -465,14 +549,29 @@ function EncounterCardBody({
           >
             <Trash2 className="h-3 w-3" />
           </button>
-          {dragHandle}
+          <AddEncounterModal
+            mode="edit"
+            sessions={sessions}
+            encounter={encounter}
+            onEncounterUpdated={onEncounterUpdated}
+            trigger={
+              <span
+                className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 px-2 py-1 text-xs text-slate-700 hover:bg-emerald-500/10 dark:text-slate-300"
+              >
+                <Pencil className="h-3 w-3" />
+                Edit
+              </span>
+            }
+          />
         </div>
       </div>
 
       <div ref={evolutionAreaRef} className="flex flex-1 items-start justify-between gap-2">
         <div className="relative">
           <button
+            ref={evolutionButtonARef}
             type="button"
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
               void handleOpenEvolutionMenu("a");
@@ -488,32 +587,15 @@ function EncounterCardBody({
             nickname={encounter.nickname_a}
             ability={encounter.ability_a}
           />
-          {openEvolutionMenu === "a" && (
-            <div
-              className="absolute left-0 top-[108px] z-20 min-w-[180px] rounded-lg border border-border bg-card p-2 shadow-lg"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <p className="mb-1 text-[10px] uppercase tracking-[0.1em] text-muted-foreground">Evolve To</p>
-              {evolutionError && <p className="text-xs text-muted-foreground">{evolutionError}</p>}
-              {evolutionOptionsA.map((option) => (
-                <button
-                  key={`evolve-a-${option}`}
-                  type="button"
-                  onClick={() => handleSelectEvolution("a", option)}
-                  className="block w-full rounded px-2 py-1 text-left text-xs text-foreground hover:bg-muted/60"
-                >
-                  {toDisplayName(option)}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
         <div className="grid place-items-center pt-7 text-slate-500">
           <Link2 className="h-4 w-4" />
         </div>
         <div className="relative">
           <button
+            ref={evolutionButtonBRef}
             type="button"
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
               void handleOpenEvolutionMenu("b");
@@ -529,31 +611,37 @@ function EncounterCardBody({
             nickname={encounter.nickname_b}
             ability={encounter.ability_b}
           />
-          {openEvolutionMenu === "b" && (
-            <div
-              className="absolute right-0 top-[108px] z-20 min-w-[180px] rounded-lg border border-border bg-card p-2 shadow-lg"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <p className="mb-1 text-[10px] uppercase tracking-[0.1em] text-muted-foreground">Evolve To</p>
-              {evolutionError && <p className="text-xs text-muted-foreground">{evolutionError}</p>}
-              {evolutionOptionsB.map((option) => (
-                <button
-                  key={`evolve-b-${option}`}
-                  type="button"
-                  onClick={() => handleSelectEvolution("b", option)}
-                  className="block w-full rounded px-2 py-1 text-left text-xs text-foreground hover:bg-muted/60"
-                >
-                  {toDisplayName(option)}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </div>
+      {openEvolutionMenu &&
+        menuPosition &&
+        createPortal(
+          <div
+            ref={evolutionMenuRef}
+            style={{ top: menuPosition.top, left: menuPosition.left }}
+            className="fixed z-[140] min-w-[220px] rounded-lg border border-border bg-card p-2 text-foreground shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <p className="mb-1 text-[10px] uppercase tracking-[0.1em] text-muted-foreground">Evolve To</p>
+            {evolutionError && <p className="text-xs text-muted-foreground">{evolutionError}</p>}
+            {(openEvolutionMenu === "a" ? evolutionOptionsA : evolutionOptionsB).map((option) => (
+              <button
+                key={`evolve-${openEvolutionMenu}-${option}`}
+                type="button"
+                onClick={() => handleSelectEvolution(openEvolutionMenu, option)}
+                className="block w-full rounded px-2 py-1 text-left text-xs text-foreground hover:bg-muted/60"
+              >
+                {toDisplayName(option)}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
       {/* `mt-auto` in a `flex-col` container consumes remaining vertical space, pinning this row to the bottom. */}
       <div className="mt-auto pt-2">
         <button
           type="button"
+          onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
             onAction();
@@ -570,10 +658,12 @@ function EncounterCardBody({
 
 function SortablePartyCard({
   encounter,
+  sessions,
   actionLabel,
   onAction,
   onRelease,
   onToggleFainted,
+  onEncounterUpdated,
   onEvolveSlot,
   onSelect,
   isActionPending,
@@ -593,16 +683,20 @@ function SortablePartyCard({
   return (
     <div
       ref={setNodeRef}
+      {...(mounted ? listeners : {})}
+      {...(mounted ? attributes : {})}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={onSelect}
-      className={`h-full min-h-[260px] rounded-lg border bg-white/80 dark:bg-slate-950/70 ${encounter.is_fainted ? "border-red-300 grayscale dark:border-red-700/60" : "border-emerald-500/20"} ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isSwapTarget ? "ring-2 ring-emerald-300 shadow-[0_0_0_2px_rgba(52,211,153,0.35)]" : ""} ${isDragging ? "opacity-30 scale-105" : ""}`}
+      className={`h-full min-h-[260px] rounded-lg border bg-white/80 dark:bg-slate-950/70 ${encounter.is_fainted ? "border-red-300 grayscale dark:border-red-700/60" : "border-emerald-500/20"} ${isSelected ? "ring-2 ring-emerald-500 shadow-[0_0_18px_-12px_rgba(16,185,129,0.2)]" : ""} ${isSwapTarget ? "border-dashed border-emerald-500/70 shadow-[0_0_16px_-10px_rgba(16,185,129,0.28)]" : ""} ${isDragging ? "cursor-grabbing opacity-50 scale-105" : "cursor-grab"}`}
     >
       <EncounterCardBody
         encounter={encounter}
+        sessions={sessions}
         actionLabel={actionLabel}
         onAction={onAction}
         onRelease={onRelease}
         onToggleFainted={onToggleFainted}
+        onEncounterUpdated={onEncounterUpdated}
         onEvolveSlot={onEvolveSlot}
         isActionPending={isActionPending}
         isReleasePending={isReleasePending}
@@ -610,19 +704,6 @@ function SortablePartyCard({
         isEvolvingA={isEvolvingA}
         isEvolvingB={isEvolvingB}
         isFainted={encounter.is_fainted}
-        dragHandle={
-          <button
-            type="button"
-            {...(mounted ? listeners : {})}
-            {...(mounted ? attributes : {})}
-            onClick={(event) => event.stopPropagation()}
-            className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 px-2 py-1 text-xs text-slate-300 hover:bg-emerald-500/10"
-            aria-label="Reorder party encounter card"
-          >
-            <GripVertical className="h-3 w-3" />
-            Drag
-          </button>
-        }
       />
     </div>
   );
@@ -662,7 +743,7 @@ function BoxMiniCard({
 }: BoxMiniCardProps) {
   return (
     <div
-      className={`h-32 rounded-lg border border-slate-200 bg-white/85 p-2 transition duration-150 hover:scale-[1.02] hover:border-emerald-500/35 dark:border-slate-700/70 dark:bg-slate-950/85 ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isSwapTarget ? "ring-2 ring-emerald-300 shadow-[0_0_0_2px_rgba(52,211,153,0.35)]" : ""} ${isDragging ? "scale-105 opacity-30" : ""}`}
+      className={`h-32 rounded-lg border border-slate-200 bg-white/85 p-2 transition duration-150 hover:scale-[1.02] hover:border-emerald-500/35 dark:border-slate-700/70 dark:bg-slate-950/85 ${isSelected ? "ring-2 ring-emerald-500 shadow-[0_0_16px_-10px_rgba(16,185,129,0.2)]" : ""} ${isSwapTarget ? "border-dashed border-emerald-500/70 shadow-[0_0_16px_-10px_rgba(16,185,129,0.28)]" : ""} ${isDragging ? "scale-105 opacity-50" : ""}`}
     >
       <div className="mb-2 flex items-center justify-start">
         <span className="block max-w-full truncate rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] uppercase text-emerald-700 dark:text-emerald-300">
@@ -894,6 +975,10 @@ function addEncounterOptimistically(current: EncounterRow[], encounter: Encounte
   return [encounter, ...current.filter((entry) => entry.id !== encounter.id)];
 }
 
+function updateEncounterOptimistically(current: EncounterRow[], encounter: EncounterRow) {
+  return current.map((entry) => (entry.id === encounter.id ? encounter : entry));
+}
+
 export function DashboardContent({ initialEncounters, sessions }: DashboardContentProps) {
   const [encounters, setEncounters] = useState<EncounterRow[]>(initialEncounters);
   const [sessionOptions, setSessionOptions] = useState<SessionRow[]>(sessions);
@@ -963,10 +1048,9 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   const boxedIds = boxedEncounters.map((encounter) => encounter.id);
   const boxSlotCount = Math.ceil((boxedEncounters.length + BOX_COLUMNS) / BOX_COLUMNS) * BOX_COLUMNS;
   const boxSlots = Array.from({ length: boxSlotCount }, (_, index) => boxedEncounters[index] ?? null);
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor),
-  );
+  const pointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 5 } });
+  const keyboardSensor = useSensor(SmartKeyboardSensor);
+  const sensors = useSensors(pointerSensor, keyboardSensor);
   const selectedPair = selectedPairId ? encounters.find((encounter) => encounter.id === selectedPairId) ?? null : null;
   const activeDragEncounter = activeDragId
     ? encounters.find((encounter) => encounter.id === activeDragId) ?? null
@@ -1385,10 +1469,14 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                             <SortablePartyCard
                               key={encounter.id}
                               encounter={encounter}
+                              sessions={sessionOptions}
                               actionLabel={encounter.is_fainted ? "Move to Box" : "Move to Box"}
                               onAction={() => void moveEncounter(encounter.id, false)}
                               onRelease={() => void releaseEncounter(encounter.id)}
                               onToggleFainted={() => void toggleFainted(encounter.id)}
+                              onEncounterUpdated={(updated) =>
+                                setEncounters((current) => updateEncounterOptimistically(current, updated))
+                              }
                               onEvolveSlot={(slot, nextPokemon) =>
                                 void evolveEncounterSlot(encounter.id, slot, nextPokemon)
                               }

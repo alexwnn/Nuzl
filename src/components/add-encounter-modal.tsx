@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, Plus, X } from "lucide-react";
 
 import { encounterInsertSchema } from "@/lib/encounter-schema";
@@ -17,7 +17,11 @@ Output: Emits the inserted encounter to the parent and closes/reset the modal.
 type AddEncounterModalProps = {
   sessions: SessionRow[];
   onEncounterAdded?: (encounter: EncounterRow) => void;
+  onEncounterUpdated?: (encounter: EncounterRow) => void;
   onSessionAdded?: (session: SessionRow) => void;
+  mode?: "add" | "edit";
+  encounter?: EncounterRow;
+  trigger?: ReactNode;
 };
 
 type AbilityComboboxProps = {
@@ -35,6 +39,38 @@ Output: Returns a string id used in the controlled select input.
 */
 function getDefaultSessionId(sessions: SessionRow[]) {
   return sessions[0] ? String(sessions[0].id) : "";
+}
+
+function createEmptyFormState(sessions: SessionRow[]) {
+  return {
+    session_id: getDefaultSessionId(sessions),
+    location: "",
+    pokemon_a: "",
+    nickname_a: "",
+    ability_a: "",
+    pokemon_b: "",
+    nickname_b: "",
+    ability_b: "",
+    is_in_party: false,
+    is_fainted: false,
+    order_index: null as number | null,
+  };
+}
+
+function createEditFormState(encounter: EncounterRow) {
+  return {
+    session_id: encounter.session_id,
+    location: encounter.location ?? "",
+    pokemon_a: encounter.pokemon_a ?? "",
+    nickname_a: encounter.nickname_a ?? "",
+    ability_a: encounter.ability_a ?? "",
+    pokemon_b: encounter.pokemon_b ?? "",
+    nickname_b: encounter.nickname_b ?? "",
+    ability_b: encounter.ability_b ?? "",
+    is_in_party: encounter.is_in_party,
+    is_fainted: encounter.is_fainted,
+    order_index: encounter.order_index,
+  };
 }
 
 /*
@@ -130,7 +166,16 @@ function AbilityCombobox({ label, value, options, onChange, placeholder }: Abili
   );
 }
 
-export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }: AddEncounterModalProps) {
+export function AddEncounterModal({
+  sessions,
+  onEncounterAdded,
+  onEncounterUpdated,
+  onSessionAdded,
+  mode = "add",
+  encounter,
+  trigger,
+}: AddEncounterModalProps) {
+  const isEditMode = mode === "edit";
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
@@ -138,19 +183,9 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sessionErrorMessage, setSessionErrorMessage] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState("");
-  const [formState, setFormState] = useState({
-    session_id: getDefaultSessionId(sessions),
-    location: "",
-    pokemon_a: "",
-    nickname_a: "",
-    ability_a: "",
-    pokemon_b: "",
-    nickname_b: "",
-    ability_b: "",
-    is_in_party: false,
-    is_fainted: false,
-    order_index: null as number | null,
-  });
+  const [formState, setFormState] = useState(
+    isEditMode && encounter ? createEditFormState(encounter) : createEmptyFormState(sessions),
+  );
   const [abilityOptionsA, setAbilityOptionsA] = useState<string[]>([]);
   const [abilityOptionsB, setAbilityOptionsB] = useState<string[]>([]);
 
@@ -161,10 +196,16 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
   );
 
   useEffect(() => {
-    if (!formState.session_id && hasSessions) {
+    if (!isEditMode && !formState.session_id && hasSessions) {
       setFormState((state) => ({ ...state, session_id: getDefaultSessionId(sessions) }));
     }
-  }, [formState.session_id, hasSessions, sessions]);
+  }, [formState.session_id, hasSessions, isEditMode, sessions]);
+
+  useEffect(() => {
+    if (!isOpen || !isEditMode || !encounter) return;
+    setFormState(createEditFormState(encounter));
+    setErrorMessage(null);
+  }, [encounter, isEditMode, isOpen]);
 
   /*
   Input: Resolved Pokemon A payload from PokemonSearch (normalized name + abilities list).
@@ -180,7 +221,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
     setFormState((state) => ({
       ...state,
       pokemon_a: payload.name || state.pokemon_a,
-      ability_a: "",
+      ability_a: (payload.name || state.pokemon_a) !== state.pokemon_a ? "" : state.ability_a,
     }));
   }, []);
 
@@ -197,7 +238,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
     setFormState((state) => ({
       ...state,
       pokemon_b: payload.name || state.pokemon_b,
-      ability_b: "",
+      ability_b: (payload.name || state.pokemon_b) !== state.pokemon_b ? "" : state.ability_b,
     }));
   }, []);
 
@@ -247,6 +288,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!hasSessions) return;
+    if (isEditMode && !encounter) return;
 
     try {
       setIsSaving(true);
@@ -322,28 +364,33 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
         return;
       }
 
-      /*
-      Input: Current encounter draft before insert.
-      Transformation: Counts current party/box rows, then computes insertion target and tail index.
-      Output: New row lands at the end of party when size < 6, otherwise at the end of the PC box list.
-      */
-      const [{ count: partyCount, error: partyCountError }, { count: boxCount, error: boxCountError }] =
-        await Promise.all([
-          supabase.from("encounters").select("*", { count: "exact", head: true }).eq("is_in_party", true),
-          supabase
-            .from("encounters")
-            .select("*", { count: "exact", head: true })
-            .eq("is_in_party", false)
-            .eq("is_fainted", false),
-        ]);
+      let nextInParty = formState.is_in_party;
+      let nextOrderIndex = formState.order_index;
 
-      if (partyCountError || boxCountError) {
-        setErrorMessage(partyCountError?.message ?? boxCountError?.message ?? "Unable to resolve party count.");
-        return;
+      if (!isEditMode) {
+        /*
+        Input: Current encounter draft before insert.
+        Transformation: Counts current party/box rows, then computes insertion target and tail index.
+        Output: New row lands at the end of party when size < 6, otherwise at the end of the PC box list.
+        */
+        const [{ count: partyCount, error: partyCountError }, { count: boxCount, error: boxCountError }] =
+          await Promise.all([
+            supabase.from("encounters").select("*", { count: "exact", head: true }).eq("is_in_party", true),
+            supabase
+              .from("encounters")
+              .select("*", { count: "exact", head: true })
+              .eq("is_in_party", false)
+              .eq("is_fainted", false),
+          ]);
+
+        if (partyCountError || boxCountError) {
+          setErrorMessage(partyCountError?.message ?? boxCountError?.message ?? "Unable to resolve party count.");
+          return;
+        }
+
+        nextInParty = (partyCount ?? 0) < 6;
+        nextOrderIndex = nextInParty ? (partyCount ?? 0) : (boxCount ?? 0);
       }
-
-      const nextInParty = (partyCount ?? 0) < 6;
-      const nextOrderIndex = nextInParty ? (partyCount ?? 0) : (boxCount ?? 0);
 
       const parsed = encounterInsertSchema.safeParse({
         session_id: selectedSession,
@@ -384,9 +431,23 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
       }
 
       const validatedEncounter = parsed.data;
-      const { data, error } = await supabase
-        .from("encounters")
-        .insert(validatedEncounter)
+      const query = isEditMode && encounter
+        ? supabase
+            .from("encounters")
+            .update({
+              session_id: validatedEncounter.session_id,
+              location: validatedEncounter.location,
+              pokemon_a: validatedEncounter.pokemon_a,
+              nickname_a: validatedEncounter.nickname_a,
+              ability_a: validatedEncounter.ability_a,
+              pokemon_b: validatedEncounter.pokemon_b,
+              nickname_b: validatedEncounter.nickname_b,
+              ability_b: validatedEncounter.ability_b,
+            })
+            .eq("id", encounter.id)
+        : supabase.from("encounters").insert(validatedEncounter);
+
+      const { data, error } = await query
         .select(
           "id, session_id, location, pokemon_a, nickname_a, ability_a, pokemon_b, nickname_b, ability_b, status, is_in_party, is_fainted, order_index, created_at",
         )
@@ -398,27 +459,25 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
       }
 
       if (data) {
-        onEncounterAdded?.(data);
+        if (isEditMode) {
+          onEncounterUpdated?.(data);
+        } else {
+          onEncounterAdded?.(data);
+        }
       }
 
-      setFormState({
-        session_id: getDefaultSessionId(sessions),
-        location: "",
-        pokemon_a: "",
-        nickname_a: "",
-        ability_a: "",
-        pokemon_b: "",
-        nickname_b: "",
-        ability_b: "",
-        is_in_party: false,
-        is_fainted: false,
-        order_index: null,
-      });
-      setAbilityOptionsA([]);
-      setAbilityOptionsB([]);
+      if (!isEditMode) {
+        setFormState(createEmptyFormState(sessions));
+        setAbilityOptionsA([]);
+        setAbilityOptionsB([]);
+      }
       setIsOpen(false);
     } catch {
-      setErrorMessage("Unable to save encounter right now. Please try again.");
+      setErrorMessage(
+        isEditMode
+          ? "Unable to update encounter right now. Please try again."
+          : "Unable to save encounter right now. Please try again.",
+      );
     } finally {
       setIsSaving(false);
     }
@@ -426,14 +485,28 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        className="inline-flex items-center gap-2 rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25"
-      >
-        <Plus className="h-4 w-4" />
-        Add Encounter
-      </button>
+      {trigger ? (
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            setIsOpen(true);
+          }}
+          className="inline-flex"
+        >
+          {trigger}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          className="inline-flex items-center gap-2 rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25"
+        >
+          <Plus className="h-4 w-4" />
+          Add Encounter
+        </button>
+      )}
 
       {isOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 dark:bg-slate-900/50">
@@ -443,13 +516,15 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
                 <p className="text-xs uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">
                   Capture Engine
                 </p>
-                <h2 className="mt-1 text-xl font-semibold text-foreground">Add New Encounter</h2>
+                <h2 className="mt-1 text-xl font-semibold text-foreground">
+                  {isEditMode ? "Edit Pair" : "Add New Encounter"}
+                </h2>
               </div>
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
                 className="rounded-md border border-border p-1 text-muted-foreground hover:bg-muted/60"
-                aria-label="Close add encounter modal"
+                aria-label={isEditMode ? "Close edit pair modal" : "Close add encounter modal"}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -459,6 +534,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
               <div className="space-y-2">
                 <label className="text-xs uppercase tracking-[0.18em] text-slate-400">Session</label>
                 <select
+                  autoFocus={false}
                   value={formState.session_id}
                   onChange={(event) =>
                     setFormState((state) => ({ ...state, session_id: event.target.value }))
@@ -475,7 +551,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
                 </select>
               </div>
 
-              {!hasSessions && (
+              {!isEditMode && !hasSessions && (
                 <div className="rounded-xl border border-border bg-muted/40 p-3">
                   {!showCreateSessionForm ? (
                     <button
@@ -610,7 +686,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
                   disabled={!hasSessions || isSaving || !formState.ability_a.trim() || !formState.ability_b.trim()}
                   className="rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25"
                 >
-                  {isSaving ? "Saving..." : "Save Encounter"}
+                  {isSaving ? "Saving..." : isEditMode ? "Save Changes" : "Save Encounter"}
                 </button>
               </div>
             </form>
