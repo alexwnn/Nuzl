@@ -95,7 +95,9 @@ export function PokemonNameplate({ pokemonName, nickname, ability }: PokemonName
           <span className="text-[10px] text-slate-500">N/A</span>
         )}
       </div>
-      <p className="mt-1 w-full truncate text-sm font-semibold text-slate-100">{toDisplayName(pokemonName)}</p>
+      <p className="mt-1 w-full truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
+        {toDisplayName(pokemonName)}
+      </p>
       <p className="w-full truncate text-[11px] text-slate-400">{nickname ? `"${toDisplayName(nickname)}"` : "-"}</p>
       <p className="mt-auto w-full truncate text-[11px] text-emerald-300">{toDisplayName(ability ?? "-")}</p>
     </div>

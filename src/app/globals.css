@@ -1,26 +1,53 @@
 @import "tailwindcss";
 
+/* 1. Directives like @variant must be top-level in v4 */
+@variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Light Mode - Clean & Airy */
+  --background: #f8fafc;    /* slate-50 */
+  --foreground: #0f172a;    /* slate-900 */
+  --card: #ffffff;          /* Pure White */
+  --card-foreground: #0f172a;
+  --muted: #f1f5f9;         /* slate-100 for empty slots */
+  --muted-foreground: #64748b;
+  --border: #e2e8f0;        /* slate-200 */
+  --accent: #10b981;        /* Emerald 500 */
 }
 
+.dark {
+  /* Dark Mode - Professional Deep Slate */
+  --background: #020617;    /* slate-950 */
+  --foreground: #f8fafc;
+  --card: #0f172a;          /* slate-900 */
+  --card-foreground: #f8fafc;
+  --muted: #1e293b;         /* slate-800 */
+  --muted-foreground: #94a3b8;
+  --border: #1e293b;
+  --accent: #10b981;
+}
+
+/* 3. The theme block is strictly for mapping variables to Tailwind names */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* 4. Global base styles */
+@layer base {
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }

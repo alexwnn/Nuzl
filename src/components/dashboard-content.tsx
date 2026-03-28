@@ -22,6 +22,7 @@ import { toast } from "sonner";
 
 import { AddEncounterModal } from "@/components/add-encounter-modal";
 import { CollapsibleSidebar } from "@/components/collapsible-sidebar";
+import { ModeToggle } from "@/components/mode-toggle";
 import { PokemonNameplate } from "@/components/pokemon-nameplate";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/lib/supabase";
@@ -55,24 +56,24 @@ type PairIntel = {
 };
 
 const typeColorMap: Record<string, string> = {
-  normal: "bg-zinc-500/30 text-zinc-200",
-  fire: "bg-red-500/30 text-red-200",
-  water: "bg-blue-500/30 text-blue-200",
-  electric: "bg-yellow-500/30 text-yellow-200",
-  grass: "bg-green-500/30 text-green-200",
-  ice: "bg-cyan-500/30 text-cyan-200",
-  fighting: "bg-orange-500/30 text-orange-200",
-  poison: "bg-purple-500/30 text-purple-200",
-  ground: "bg-amber-600/30 text-amber-200",
-  flying: "bg-sky-500/30 text-sky-200",
-  psychic: "bg-pink-500/30 text-pink-200",
-  bug: "bg-lime-600/30 text-lime-200",
-  rock: "bg-stone-500/30 text-stone-200",
-  ghost: "bg-violet-500/30 text-violet-200",
-  dragon: "bg-indigo-500/30 text-indigo-200",
-  dark: "bg-slate-600/40 text-slate-200",
-  steel: "bg-gray-500/30 text-gray-200",
-  fairy: "bg-fuchsia-500/30 text-fuchsia-200",
+  normal: "bg-zinc-200 text-slate-950 dark:bg-zinc-500/30 dark:text-zinc-200",
+  fire: "bg-red-200 text-slate-950 dark:bg-red-500/30 dark:text-red-200",
+  water: "bg-blue-200 text-slate-950 dark:bg-blue-500/30 dark:text-blue-200",
+  electric: "bg-yellow-200 text-slate-950 dark:bg-yellow-500/30 dark:text-yellow-200",
+  grass: "bg-green-200 text-slate-950 dark:bg-green-500/30 dark:text-green-200",
+  ice: "bg-cyan-200 text-slate-950 dark:bg-cyan-500/30 dark:text-cyan-200",
+  fighting: "bg-orange-200 text-slate-950 dark:bg-orange-500/30 dark:text-orange-200",
+  poison: "bg-purple-200 text-slate-950 dark:bg-purple-500/30 dark:text-purple-200",
+  ground: "bg-amber-200 text-slate-950 dark:bg-amber-600/30 dark:text-amber-200",
+  flying: "bg-sky-200 text-slate-950 dark:bg-sky-500/30 dark:text-sky-200",
+  psychic: "bg-pink-200 text-slate-950 dark:bg-pink-500/30 dark:text-pink-200",
+  bug: "bg-lime-200 text-slate-950 dark:bg-lime-600/30 dark:text-lime-200",
+  rock: "bg-stone-200 text-slate-950 dark:bg-stone-500/30 dark:text-stone-200",
+  ghost: "bg-violet-200 text-slate-950 dark:bg-violet-500/30 dark:text-violet-200",
+  dragon: "bg-indigo-200 text-slate-950 dark:bg-indigo-500/30 dark:text-indigo-200",
+  dark: "bg-slate-300 text-slate-950 dark:bg-slate-600/40 dark:text-slate-200",
+  steel: "bg-gray-200 text-slate-950 dark:bg-gray-500/30 dark:text-gray-200",
+  fairy: "bg-fuchsia-200 text-slate-950 dark:bg-fuchsia-500/30 dark:text-fuchsia-200",
 };
 
 const ALL_ATTACK_TYPES = [
@@ -139,7 +140,7 @@ function getDefenseTone(multiplier: number) {
   if (multiplier < 1) {
     return {
       container: "border-emerald-500/35 bg-emerald-500/10",
-      value: "text-emerald-200",
+      value: "text-emerald-700 dark:text-emerald-200",
     };
   }
 
@@ -151,7 +152,7 @@ function getDefenseTone(multiplier: number) {
   }
 
   return {
-    container: "border-slate-700/60 bg-slate-900/60",
+    container: "border-slate-200/80 bg-white/70 dark:border-slate-700/60 dark:bg-slate-900/60",
     value: "text-slate-300",
   };
 }
@@ -283,7 +284,7 @@ function EncounterCardBody({
   return (
     <div className="flex h-full min-h-[260px] flex-col p-4">
       <div className="mb-2 flex items-center justify-between">
-        <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[11px] text-emerald-300">
+        <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[11px] text-emerald-700 dark:text-emerald-300">
           {encounter.location ?? "Unknown"}
         </span>
         <div className="flex items-center gap-2">
@@ -294,7 +295,7 @@ function EncounterCardBody({
               onRelease();
             }}
             disabled={isReleasePending}
-            className="inline-flex items-center gap-1 rounded-md border border-red-500/30 px-2 py-1 text-xs text-red-200 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-md border border-red-500/40 px-2 py-1 text-xs text-red-700 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-200 dark:hover:bg-red-500/20"
             aria-label="Release pair"
           >
             <Trash2 className="h-3 w-3" />
@@ -327,7 +328,7 @@ function EncounterCardBody({
             onAction();
           }}
           disabled={isActionPending}
-          className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-200 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md border border-emerald-700 bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-100 dark:hover:bg-emerald-500/30"
         >
           {actionLabel}
         </button>
@@ -358,7 +359,7 @@ function SortablePartyCard({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={onSelect}
-      className={`h-full min-h-[260px] rounded-lg border border-emerald-500/20 bg-slate-950/70 ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isSwapTarget ? "ring-2 ring-emerald-300 shadow-[0_0_0_2px_rgba(52,211,153,0.35)]" : ""} ${isDragging ? "opacity-30 scale-105" : ""}`}
+      className={`h-full min-h-[260px] rounded-lg border border-emerald-500/20 bg-white/80 dark:bg-slate-950/70 ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isSwapTarget ? "ring-2 ring-emerald-300 shadow-[0_0_0_2px_rgba(52,211,153,0.35)]" : ""} ${isDragging ? "opacity-30 scale-105" : ""}`}
     >
       <EncounterCardBody
         encounter={encounter}
@@ -411,22 +412,22 @@ function BoxMiniCard({
 }: BoxMiniCardProps) {
   return (
     <div
-      className={`h-32 rounded-lg border border-slate-700/70 bg-slate-950/85 p-2 transition duration-150 hover:scale-[1.02] hover:border-emerald-500/35 ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isSwapTarget ? "ring-2 ring-emerald-300 shadow-[0_0_0_2px_rgba(52,211,153,0.35)]" : ""} ${isDragging ? "scale-105 opacity-30" : ""}`}
+      className={`h-32 rounded-lg border border-slate-200 bg-white/85 p-2 transition duration-150 hover:scale-[1.02] hover:border-emerald-500/35 dark:border-slate-700/70 dark:bg-slate-950/85 ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isSwapTarget ? "ring-2 ring-emerald-300 shadow-[0_0_0_2px_rgba(52,211,153,0.35)]" : ""} ${isDragging ? "scale-105 opacity-30" : ""}`}
     >
       <div className="mb-2 flex items-center justify-start">
-        <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] uppercase text-emerald-200">
+        <span className="block max-w-full truncate rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] uppercase text-emerald-700 dark:text-emerald-300">
           {encounter.location}
         </span>
       </div>
       <div className="flex items-center justify-center gap-2">
-        <div className="grid h-14 w-14 place-items-center rounded-md border border-emerald-500/20 bg-slate-900">
+        <div className="grid h-14 w-14 place-items-center rounded-md border border-emerald-500/20 bg-white dark:bg-slate-900">
           {spriteA ? (
             <Image src={spriteA} alt={`${encounter.pokemon_a} sprite`} width={52} height={52} />
           ) : (
             <span className="text-[10px] text-slate-500">N/A</span>
           )}
         </div>
-        <div className="grid h-14 w-14 place-items-center rounded-md border border-emerald-500/20 bg-slate-900">
+        <div className="grid h-14 w-14 place-items-center rounded-md border border-emerald-500/20 bg-white dark:bg-slate-900">
           {spriteB ? (
             <Image src={spriteB} alt={`${encounter.pokemon_b} sprite`} width={52} height={52} />
           ) : (
@@ -499,9 +500,9 @@ function SortableBoxMiniCard({
 
 function PairDragPreview({ encounter }: { encounter: EncounterRow }) {
   return (
-    <div className="w-[280px] rounded-lg border border-emerald-400/40 bg-slate-950/95 p-3 shadow-[0_14px_40px_-14px_rgba(16,185,129,0.65)]">
+    <div className="w-[280px] rounded-lg border border-emerald-400/40 bg-white/95 p-3 shadow-[0_14px_40px_-14px_rgba(16,185,129,0.65)] dark:bg-slate-950/95">
       <div className="mb-2 flex items-center justify-between">
-        <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[11px] text-emerald-300">
+        <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[11px] text-emerald-700 dark:text-emerald-300">
           {encounter.location ?? "Unknown"}
         </span>
       </div>
@@ -530,9 +531,9 @@ function BoxEmptySlot({ index }: { index: number }) {
   return (
     <div
       ref={setNodeRef}
-      className={`grid h-32 place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 p-4 text-center transition ${isOver ? "border-emerald-500/40 bg-emerald-500/10" : ""}`}
+      className={`grid h-32 place-items-center rounded-lg border border-dashed border-border bg-muted/50 p-4 text-center transition ${isOver ? "border-emerald-500/40 bg-emerald-500/10" : ""}`}
     >
-      <p className="text-xs uppercase tracking-[0.12em] text-slate-500">EMPTY SLOT</p>
+      <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">EMPTY SLOT</p>
     </div>
   );
 }
@@ -943,24 +944,27 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-emerald-500/20 bg-slate-950/95 backdrop-blur">
+    <div className="min-h-screen bg-background text-foreground transition-colors">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-emerald-500/20 bg-white/95 backdrop-blur dark:bg-slate-950/95">
         <div className="mx-auto flex h-[60px] max-w-[1700px] items-center justify-between px-4 md:px-6 xl:px-8">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold tracking-wide text-emerald-300">Nuzl</p>
-            <p className="text-xs text-slate-400">
+            <p className="text-sm font-semibold tracking-wide text-emerald-600 dark:text-emerald-300">Nuzl</p>
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               {realtimeConnected ? "Connected" : "Connecting..."}
             </p>
           </div>
-          <AddEncounterModal
-            sessions={sessionOptions}
-            onEncounterAdded={(encounter) =>
-              setEncounters((current) => addEncounterOptimistically(current, encounter))
-            }
-            onSessionAdded={(session) =>
-              setSessionOptions((current) => [session, ...current.filter((item) => item.id !== session.id)])
-            }
-          />
+          <div className="flex items-center gap-2">
+            <ModeToggle />
+            <AddEncounterModal
+              sessions={sessionOptions}
+              onEncounterAdded={(encounter) =>
+                setEncounters((current) => addEncounterOptimistically(current, encounter))
+              }
+              onSessionAdded={(session) =>
+                setSessionOptions((current) => [session, ...current.filter((item) => item.id !== session.id)])
+              }
+            />
+          </div>
         </div>
       </header>
 
@@ -1009,9 +1013,11 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                           ) : (
                             <div
                               key={`party-empty-slot-${index}`}
-                              className={`grid h-full min-h-[260px] place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 p-4 text-center transition ${isOver ? "border-emerald-500/40 bg-emerald-500/10" : ""}`}
+                              className={`grid h-full min-h-[260px] place-items-center rounded-lg border border-dashed border-border bg-muted/50 p-4 text-center transition ${isOver ? "border-emerald-500/40 bg-emerald-500/10" : ""}`}
                             >
-                              <p className="text-xs uppercase tracking-[0.12em] text-slate-500">EMPTY SLOT</p>
+                              <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                                EMPTY SLOT
+                              </p>
                             </div>
                           ),
                         )}
@@ -1051,7 +1057,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                 </Card>
               </div>
 
-              <Card className="xl:col-span-5 xl:sticky xl:top-20 xl:h-[calc(100vh-96px)] xl:overflow-y-auto">
+              <Card className="xl:col-span-5 xl:sticky xl:top-20 xl:h-[calc(100vh-96px)] xl:overflow-y-auto bg-card shadow-sm">
                 <CardHeader>
                   <CardTitle className="text-2xl">Soul Link Intel</CardTitle>
                   <CardDescription>Types and base stats for the selected pair.</CardDescription>
@@ -1059,7 +1065,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                 <CardContent>
                   {/* Conditional render: show empty state until a user selects an encounter card. */}
                   {!selectedPair && (
-                    <div className="grid min-h-[260px] place-items-center rounded-lg border border-dashed border-slate-800 bg-slate-950/40 p-4 text-center">
+                    <div className="grid min-h-[260px] place-items-center rounded-lg border border-dashed border-border bg-muted/50 p-4 text-center">
                       <p className="text-sm text-slate-400">Select a pair to view intel.</p>
                     </div>
                   )}
@@ -1069,8 +1075,8 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                       {!intelLoading && pairIntel && (
                         <div className="space-y-4">
                           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                            <div className="space-y-3 rounded-lg border border-emerald-500/20 bg-slate-950/40 p-3">
-                              <div className="grid place-items-center rounded-lg border border-emerald-500/20 bg-slate-900/60 p-2">
+                            <div className="space-y-3 rounded-lg border border-border bg-card p-3 shadow-sm">
+                              <div className="grid place-items-center rounded-lg border border-border bg-background p-2">
                                 {pairIntel.pokemonA.artworkUrl ? (
                                   <Image
                                     src={pairIntel.pokemonA.artworkUrl}
@@ -1083,13 +1089,13 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                                   <p className="text-xs text-slate-500">No artwork</p>
                                 )}
                               </div>
-                              <p className="text-xs font-semibold tracking-[0.16em] text-slate-100">
+                              <p className="text-xs font-semibold tracking-[0.16em] text-slate-900 dark:text-slate-50">
                                 {toDisplayNameUpper(selectedPair.pokemon_a)}
                               </p>
                               <p className="text-xs text-slate-400">
                                 Nickname: {selectedPair.nickname_a?.trim() ? selectedPair.nickname_a : "-"}
                               </p>
-                              <p className="text-xs text-emerald-200">
+                              <p className="text-xs text-emerald-700 dark:text-emerald-300">
                                 Ability: {selectedPair.ability_a?.trim() ? selectedPair.ability_a : "-"}
                               </p>
                               <div className="flex flex-wrap gap-1">
@@ -1120,8 +1126,8 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                               </div>
                             </div>
 
-                            <div className="space-y-3 rounded-lg border border-emerald-500/20 bg-slate-950/40 p-3">
-                              <div className="grid place-items-center rounded-lg border border-emerald-500/20 bg-slate-900/60 p-2">
+                            <div className="space-y-3 rounded-lg border border-border bg-card p-3 shadow-sm">
+                              <div className="grid place-items-center rounded-lg border border-border bg-background p-2">
                                 {pairIntel.pokemonB.artworkUrl ? (
                                   <Image
                                     src={pairIntel.pokemonB.artworkUrl}
@@ -1134,13 +1140,13 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                                   <p className="text-xs text-slate-500">No artwork</p>
                                 )}
                               </div>
-                              <p className="text-xs font-semibold tracking-[0.16em] text-slate-100">
+                              <p className="text-xs font-semibold tracking-[0.16em] text-slate-900 dark:text-slate-50">
                                 {toDisplayNameUpper(selectedPair.pokemon_b)}
                               </p>
                               <p className="text-xs text-slate-400">
                                 Nickname: {selectedPair.nickname_b?.trim() ? selectedPair.nickname_b : "-"}
                               </p>
-                              <p className="text-xs text-emerald-200">
+                              <p className="text-xs text-emerald-700 dark:text-emerald-300">
                                 Ability: {selectedPair.ability_b?.trim() ? selectedPair.ability_b : "-"}
                               </p>
                               <div className="flex flex-wrap gap-1">
@@ -1175,7 +1181,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                           <div className="space-y-3">
                             <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Type Defenses</p>
                             <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-                              <div className="rounded-lg border border-emerald-500/20 bg-slate-950/40 p-3">
+                              <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
                                 <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-300">
                                   {toDisplayNameUpper(selectedPair.pokemon_a)}
                                 </p>
@@ -1200,7 +1206,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                                 </div>
                               </div>
 
-                              <div className="rounded-lg border border-emerald-500/20 bg-slate-950/40 p-3">
+                              <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
                                 <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-300">
                                   {toDisplayNameUpper(selectedPair.pokemon_b)}
                                 </p>
