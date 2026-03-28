@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 /*
 Input: Pokemon species name plus optional nickname from encounter rows.
@@ -41,8 +41,28 @@ function toDisplayName(value: string | null | undefined) {
 
 export function PokemonNameplate({ pokemonName, nickname, ability }: PokemonNameplateProps) {
   const [spriteUrl, setSpriteUrl] = useState<string | null>(null);
+  const lastSlugRef = useRef<string>("");
+  const spriteFrameRef = useRef<HTMLDivElement | null>(null);
   const slug = useMemo(() => toSlug(pokemonName), [pokemonName]);
   const resolvedSpriteUrl = slug ? spriteUrl : null;
+
+  useEffect(() => {
+    if (!slug) return;
+    if (!lastSlugRef.current) {
+      lastSlugRef.current = slug;
+      return;
+    }
+
+    if (lastSlugRef.current !== slug) {
+      const spriteFrame = spriteFrameRef.current;
+      if (spriteFrame) {
+        spriteFrame.classList.remove("sprite-evolve-flash");
+        void spriteFrame.offsetWidth;
+        spriteFrame.classList.add("sprite-evolve-flash");
+      }
+      lastSlugRef.current = slug;
+    }
+  }, [slug]);
 
   useEffect(() => {
     if (!slug) {
@@ -83,7 +103,10 @@ export function PokemonNameplate({ pokemonName, nickname, ability }: PokemonName
       Flexbox note: `flex-col items-center` keeps the larger sprite and text vertically stacked
       and centered, so names/nicknames stay visually aligned directly under each sprite.
       */}
-      <div className="grid h-20 w-20 place-items-center overflow-hidden rounded-md border border-emerald-500/20 bg-slate-900">
+      <div
+        ref={spriteFrameRef}
+        className="relative grid h-20 w-20 place-items-center overflow-hidden rounded-md border border-slate-200 bg-slate-100/50 dark:border-emerald-500/20 dark:bg-slate-900"
+      >
         {resolvedSpriteUrl ? (
           <Image
             src={resolvedSpriteUrl}

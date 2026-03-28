@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -17,7 +17,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Heart, Link2, Skull, Trash2, Users } from "lucide-react";
+import { GripVertical, Heart, Link2, Skull, Sparkles, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { AddEncounterModal } from "@/components/add-encounter-modal";
@@ -232,10 +232,13 @@ type EncounterCardProps = {
   onAction: () => void;
   onRelease: () => void;
   onToggleFainted: () => void;
+  onEvolveSlot: (slot: "a" | "b", nextPokemon: string) => void;
   onSelect: () => void;
   isActionPending: boolean;
   isReleasePending: boolean;
   isFaintingPending: boolean;
+  isEvolvingA: boolean;
+  isEvolvingB: boolean;
   isSelected: boolean;
   isSwapTarget?: boolean;
 };
@@ -246,14 +249,23 @@ type EncounterCardBodyProps = {
   onAction: () => void;
   onRelease: () => void;
   onToggleFainted: () => void;
+  onEvolveSlot: (slot: "a" | "b", nextPokemon: string) => void;
   isActionPending: boolean;
   isReleasePending: boolean;
   isFaintingPending: boolean;
+  isEvolvingA: boolean;
+  isEvolvingB: boolean;
   isFainted: boolean;
   dragHandle: React.ReactNode;
 };
 
 const pokemonSpriteCache = new Map<string, string | null>();
+const evolutionOptionsCache = new Map<string, string[]>();
+
+type EvolutionChainNode = {
+  species: { name: string };
+  evolves_to: EvolutionChainNode[];
+};
 
 function toPokemonSlug(value: string) {
   return value.trim().toLowerCase();
@@ -277,18 +289,143 @@ async function fetchPokemonSprite(pokemonName: string, signal?: AbortSignal) {
   return spriteUrl;
 }
 
+function toDisplayName(value: string) {
+  return value
+    .replaceAll("-", " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function findEvolutionNode(node: EvolutionChainNode, pokemonName: string): EvolutionChainNode | null {
+  if (node.species.name === pokemonName) {
+    return node;
+  }
+
+  for (const child of node.evolves_to) {
+    const found = findEvolutionNode(child, pokemonName);
+    if (found) {
+      return found;
+    }
+  }
+
+  return null;
+}
+
+async function fetchEvolutionOptions(pokemonName: string) {
+  const slug = toPokemonSlug(pokemonName);
+  if (!slug) return [];
+  if (evolutionOptionsCache.has(slug)) {
+    return evolutionOptionsCache.get(slug) ?? [];
+  }
+
+  const speciesResponse = await fetch(`https://pokeapi.co/api/v2/pokemon-species/${slug}`);
+  if (!speciesResponse.ok) return [];
+  const speciesPayload = await speciesResponse.json();
+  const evolutionChainUrl: string | undefined = speciesPayload.evolution_chain?.url;
+  if (!evolutionChainUrl) return [];
+
+  const chainResponse = await fetch(evolutionChainUrl);
+  if (!chainResponse.ok) return [];
+  const chainPayload = await chainResponse.json();
+  const rootNode: EvolutionChainNode | undefined = chainPayload.chain;
+  if (!rootNode) return [];
+
+  const currentNode = findEvolutionNode(rootNode, slug);
+  const options = currentNode ? currentNode.evolves_to.map((node) => node.species.name) : [];
+  evolutionOptionsCache.set(slug, options);
+  return options;
+}
+
 function EncounterCardBody({
   encounter,
   actionLabel,
   onAction,
   onRelease,
   onToggleFainted,
+  onEvolveSlot,
   isActionPending,
   isReleasePending,
   isFaintingPending,
+  isEvolvingA,
+  isEvolvingB,
   isFainted,
   dragHandle,
 }: EncounterCardBodyProps) {
+  const [openEvolutionMenu, setOpenEvolutionMenu] = useState<"a" | "b" | null>(null);
+  const [evolutionOptionsA, setEvolutionOptionsA] = useState<string[]>([]);
+  const [evolutionOptionsB, setEvolutionOptionsB] = useState<string[]>([]);
+  const [evolutionLoadingSlot, setEvolutionLoadingSlot] = useState<"a" | "b" | null>(null);
+  const [evolutionError, setEvolutionError] = useState<string | null>(null);
+  const evolutionAreaRef = useRef<HTMLDivElement | null>(null);
+  const noEvolutionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!openEvolutionMenu) return;
+
+    const handleOutsidePointer = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (!evolutionAreaRef.current?.contains(target)) {
+        setOpenEvolutionMenu(null);
+        setEvolutionError(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsidePointer);
+    return () => document.removeEventListener("mousedown", handleOutsidePointer);
+  }, [openEvolutionMenu]);
+
+  useEffect(() => {
+    return () => {
+      if (noEvolutionTimeoutRef.current) {
+        clearTimeout(noEvolutionTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  async function handleOpenEvolutionMenu(slot: "a" | "b") {
+    const pokemonName = slot === "a" ? encounter.pokemon_a : encounter.pokemon_b;
+    setEvolutionError(null);
+    setEvolutionLoadingSlot(slot);
+    if (noEvolutionTimeoutRef.current) {
+      clearTimeout(noEvolutionTimeoutRef.current);
+      noEvolutionTimeoutRef.current = null;
+    }
+
+    try {
+      const options = await fetchEvolutionOptions(pokemonName);
+      if (slot === "a") {
+        setEvolutionOptionsA(options);
+      } else {
+        setEvolutionOptionsB(options);
+      }
+      setOpenEvolutionMenu(slot);
+      if (options.length === 0) {
+        setEvolutionError("No further evolutions.");
+        if (noEvolutionTimeoutRef.current) {
+          clearTimeout(noEvolutionTimeoutRef.current);
+        }
+        noEvolutionTimeoutRef.current = setTimeout(() => {
+          setOpenEvolutionMenu(null);
+          setEvolutionError(null);
+        }, 2000);
+      }
+    } catch {
+      setEvolutionError("Unable to load evolutions.");
+      setOpenEvolutionMenu(slot);
+    } finally {
+      setEvolutionLoadingSlot(null);
+    }
+  }
+
+  function handleSelectEvolution(slot: "a" | "b", nextPokemon: string) {
+    onEvolveSlot(slot, nextPokemon);
+    setOpenEvolutionMenu(null);
+    setEvolutionError(null);
+  }
+
   return (
     <div className="flex h-full min-h-[260px] flex-col p-4">
       <div className="mb-2 flex items-center justify-between">
@@ -324,20 +461,86 @@ function EncounterCardBody({
         </div>
       </div>
 
-      <div className="flex flex-1 items-start justify-between gap-2">
-        <PokemonNameplate
-          pokemonName={encounter.pokemon_a ?? "Unknown"}
-          nickname={encounter.nickname_a}
-          ability={encounter.ability_a}
-        />
+      <div ref={evolutionAreaRef} className="flex flex-1 items-start justify-between gap-2">
+        <div className="relative">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              void handleOpenEvolutionMenu("a");
+            }}
+            disabled={isEvolvingA || evolutionLoadingSlot === "a"}
+            className="absolute -right-2 top-0 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-500/30 bg-background text-emerald-700 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-300"
+            aria-label="Evolve Pokemon A"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+          </button>
+          <PokemonNameplate
+            pokemonName={encounter.pokemon_a ?? "Unknown"}
+            nickname={encounter.nickname_a}
+            ability={encounter.ability_a}
+          />
+          {openEvolutionMenu === "a" && (
+            <div
+              className="absolute left-0 top-[108px] z-20 min-w-[180px] rounded-lg border border-border bg-card p-2 shadow-lg"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <p className="mb-1 text-[10px] uppercase tracking-[0.1em] text-muted-foreground">Evolve To</p>
+              {evolutionError && <p className="text-xs text-muted-foreground">{evolutionError}</p>}
+              {evolutionOptionsA.map((option) => (
+                <button
+                  key={`evolve-a-${option}`}
+                  type="button"
+                  onClick={() => handleSelectEvolution("a", option)}
+                  className="block w-full rounded px-2 py-1 text-left text-xs text-foreground hover:bg-muted/60"
+                >
+                  {toDisplayName(option)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="grid place-items-center pt-7 text-slate-500">
           <Link2 className="h-4 w-4" />
         </div>
-        <PokemonNameplate
-          pokemonName={encounter.pokemon_b ?? "Unknown"}
-          nickname={encounter.nickname_b}
-          ability={encounter.ability_b}
-        />
+        <div className="relative">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              void handleOpenEvolutionMenu("b");
+            }}
+            disabled={isEvolvingB || evolutionLoadingSlot === "b"}
+            className="absolute -right-2 top-0 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-500/30 bg-background text-emerald-700 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-300"
+            aria-label="Evolve Pokemon B"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+          </button>
+          <PokemonNameplate
+            pokemonName={encounter.pokemon_b ?? "Unknown"}
+            nickname={encounter.nickname_b}
+            ability={encounter.ability_b}
+          />
+          {openEvolutionMenu === "b" && (
+            <div
+              className="absolute right-0 top-[108px] z-20 min-w-[180px] rounded-lg border border-border bg-card p-2 shadow-lg"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <p className="mb-1 text-[10px] uppercase tracking-[0.1em] text-muted-foreground">Evolve To</p>
+              {evolutionError && <p className="text-xs text-muted-foreground">{evolutionError}</p>}
+              {evolutionOptionsB.map((option) => (
+                <button
+                  key={`evolve-b-${option}`}
+                  type="button"
+                  onClick={() => handleSelectEvolution("b", option)}
+                  className="block w-full rounded px-2 py-1 text-left text-xs text-foreground hover:bg-muted/60"
+                >
+                  {toDisplayName(option)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
       {/* `mt-auto` in a `flex-col` container consumes remaining vertical space, pinning this row to the bottom. */}
       <div className="mt-auto pt-2">
@@ -363,10 +566,13 @@ function SortablePartyCard({
   onAction,
   onRelease,
   onToggleFainted,
+  onEvolveSlot,
   onSelect,
   isActionPending,
   isReleasePending,
   isFaintingPending,
+  isEvolvingA,
+  isEvolvingB,
   isSelected,
   isSwapTarget = false,
 }: EncounterCardProps) {
@@ -389,9 +595,12 @@ function SortablePartyCard({
         onAction={onAction}
         onRelease={onRelease}
         onToggleFainted={onToggleFainted}
+        onEvolveSlot={onEvolveSlot}
         isActionPending={isActionPending}
         isReleasePending={isReleasePending}
         isFaintingPending={isFaintingPending}
+        isEvolvingA={isEvolvingA}
+        isEvolvingB={isEvolvingB}
         isFainted={encounter.is_fainted}
         dragHandle={
           <button
@@ -686,6 +895,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   const [selectedPairId, setSelectedPairId] = useState<string | null>(null);
   const [releasingEncounterIds, setReleasingEncounterIds] = useState<string[]>([]);
   const [faintingEncounterIds, setFaintingEncounterIds] = useState<string[]>([]);
+  const [evolvingSlots, setEvolvingSlots] = useState<string[]>([]);
   const [pairIntel, setPairIntel] = useState<PairIntel | null>(null);
   const [intelLoading, setIntelLoading] = useState(false);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -933,6 +1143,33 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
     setFaintingEncounterIds((current) => current.filter((id) => id !== encounterId));
   }
 
+  async function evolveEncounterSlot(encounterId: string, slot: "a" | "b", nextPokemon: string) {
+    const pendingKey = `${encounterId}:${slot}`;
+    if (evolvingSlots.includes(pendingKey)) return;
+
+    const normalizedPokemon = toPokemonSlug(nextPokemon);
+    if (!normalizedPokemon) return;
+
+    const updatePayload =
+      slot === "a" ? { pokemon_a: normalizedPokemon } : { pokemon_b: normalizedPokemon };
+
+    setEvolvingSlots((current) => [...current, pendingKey]);
+    setActionError(null);
+
+    const previous = encounters;
+    setEncounters((current) =>
+      current.map((entry) => (entry.id === encounterId ? { ...entry, ...updatePayload } : entry)),
+    );
+
+    const { error } = await supabase.from("encounters").update(updatePayload).eq("id", encounterId);
+    if (error) {
+      setEncounters(previous);
+      setActionError(`Failed to evolve Pokemon: ${error.message}`);
+    }
+
+    setEvolvingSlots((current) => current.filter((key) => key !== pendingKey));
+  }
+
   async function releaseEncounter(encounterId: string) {
     if (releasingEncounterIds.includes(encounterId)) return;
     const confirmed = window.confirm("Are you sure you want to release this pair?");
@@ -1144,10 +1381,15 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                               onAction={() => void moveEncounter(encounter.id, false)}
                               onRelease={() => void releaseEncounter(encounter.id)}
                               onToggleFainted={() => void toggleFainted(encounter.id)}
+                              onEvolveSlot={(slot, nextPokemon) =>
+                                void evolveEncounterSlot(encounter.id, slot, nextPokemon)
+                              }
                               onSelect={() => setSelectedPairId(encounter.id)}
                               isActionPending={pendingEncounterIds.includes(encounter.id)}
                               isReleasePending={releasingEncounterIds.includes(encounter.id)}
                               isFaintingPending={faintingEncounterIds.includes(encounter.id)}
+                              isEvolvingA={evolvingSlots.includes(`${encounter.id}:a`)}
+                              isEvolvingB={evolvingSlots.includes(`${encounter.id}:b`)}
                               isSelected={selectedPairId === encounter.id}
                               isSwapTarget={hoveredSwapTargetId === encounter.id && activeDragId !== encounter.id}
                             />
@@ -1249,7 +1491,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                         <div className="space-y-4">
                           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div className="space-y-3 rounded-lg border border-border bg-card p-3 shadow-sm">
-                              <div className="grid place-items-center rounded-lg border border-border bg-background p-2">
+                              <div className="grid place-items-center rounded-lg border border-slate-200 bg-slate-100/50 p-2 dark:border-slate-700 dark:bg-slate-900/60">
                                 {pairIntel.pokemonA.artworkUrl ? (
                                   <Image
                                     src={pairIntel.pokemonA.artworkUrl}
@@ -1265,12 +1507,14 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                               <p className="text-xs font-semibold tracking-[0.16em] text-slate-900 dark:text-slate-50">
                                 {toDisplayNameUpper(selectedPair.pokemon_a)}
                               </p>
-                              <p className="text-xs text-slate-400">
-                                Nickname: {selectedPair.nickname_a?.trim() ? selectedPair.nickname_a : "-"}
-                              </p>
-                              <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                                Ability: {selectedPair.ability_a?.trim() ? selectedPair.ability_a : "-"}
-                              </p>
+                              <div className="space-y-1 border-t border-border/80 pt-2">
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                  Nickname: {selectedPair.nickname_a?.trim() ? selectedPair.nickname_a : "-"}
+                                </p>
+                                <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                                  Ability: {selectedPair.ability_a?.trim() ? selectedPair.ability_a : "-"}
+                                </p>
+                              </div>
                               <div className="flex flex-wrap gap-1">
                                 {pairIntel.pokemonA.types.map((type) => (
                                   <span
@@ -1281,14 +1525,14 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                                   </span>
                                 ))}
                               </div>
-                              <div className="space-y-2">
+                              <div className="space-y-2 pt-1">
                                 {pairIntel.pokemonA.stats.map((stat) => (
                                   <div key={`a-stat-${stat.label}`}>
                                     <div className="mb-1 flex items-center justify-between text-[11px] uppercase text-slate-400">
                                       <span>{stat.label.replaceAll("-", " ")}</span>
                                       <span>{stat.value}</span>
                                     </div>
-                                    <div className="h-3 rounded bg-slate-800">
+                                    <div className="h-3 rounded bg-slate-200 dark:bg-slate-800">
                                       <div
                                         className={`h-full rounded ${getStatBarColor(stat.value)}`}
                                         style={{ width: `${Math.min(100, (stat.value / 180) * 100)}%` }}
@@ -1300,7 +1544,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                             </div>
 
                             <div className="space-y-3 rounded-lg border border-border bg-card p-3 shadow-sm">
-                              <div className="grid place-items-center rounded-lg border border-border bg-background p-2">
+                              <div className="grid place-items-center rounded-lg border border-slate-200 bg-slate-100/50 p-2 dark:border-slate-700 dark:bg-slate-900/60">
                                 {pairIntel.pokemonB.artworkUrl ? (
                                   <Image
                                     src={pairIntel.pokemonB.artworkUrl}
@@ -1316,12 +1560,14 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                               <p className="text-xs font-semibold tracking-[0.16em] text-slate-900 dark:text-slate-50">
                                 {toDisplayNameUpper(selectedPair.pokemon_b)}
                               </p>
-                              <p className="text-xs text-slate-400">
-                                Nickname: {selectedPair.nickname_b?.trim() ? selectedPair.nickname_b : "-"}
-                              </p>
-                              <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                                Ability: {selectedPair.ability_b?.trim() ? selectedPair.ability_b : "-"}
-                              </p>
+                              <div className="space-y-1 border-t border-border/80 pt-2">
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                  Nickname: {selectedPair.nickname_b?.trim() ? selectedPair.nickname_b : "-"}
+                                </p>
+                                <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                                  Ability: {selectedPair.ability_b?.trim() ? selectedPair.ability_b : "-"}
+                                </p>
+                              </div>
                               <div className="flex flex-wrap gap-1">
                                 {pairIntel.pokemonB.types.map((type) => (
                                   <span
@@ -1332,14 +1578,14 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                                   </span>
                                 ))}
                               </div>
-                              <div className="space-y-2">
+                              <div className="space-y-2 pt-1">
                                 {pairIntel.pokemonB.stats.map((stat) => (
                                   <div key={`b-stat-${stat.label}`}>
                                     <div className="mb-1 flex items-center justify-between text-[11px] uppercase text-slate-400">
                                       <span>{stat.label.replaceAll("-", " ")}</span>
                                       <span>{stat.value}</span>
                                     </div>
-                                    <div className="h-3 rounded bg-slate-800">
+                                    <div className="h-3 rounded bg-slate-200 dark:bg-slate-800">
                                       <div
                                         className={`h-full rounded ${getStatBarColor(stat.value)}`}
                                         style={{ width: `${Math.min(100, (stat.value / 180) * 100)}%` }}
