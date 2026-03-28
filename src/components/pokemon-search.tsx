@@ -257,7 +257,7 @@ export function PokemonSearch({ label, value, onChange, onPokemonResolved }: Pok
     <div className="space-y-2">
       <label className="text-xs uppercase tracking-[0.18em] text-slate-400">{label}</label>
       <div className="relative">
-        <div className="flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-slate-950/80 p-2">
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-2">
           <Search className="h-4 w-4 text-emerald-300" />
           <input
             type="text"
@@ -269,7 +269,7 @@ export function PokemonSearch({ label, value, onChange, onPokemonResolved }: Pok
               setIsListOpen(true);
             }}
             placeholder="Search Pokemon..."
-            className="w-full bg-transparent text-sm text-slate-100 outline-none placeholder:text-slate-500"
+            className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
           />
 
           {isListLoading && <Loader2 className="h-4 w-4 animate-spin text-emerald-300" />}
@@ -283,20 +283,20 @@ export function PokemonSearch({ label, value, onChange, onPokemonResolved }: Pok
               alt={`${value} sprite`}
               width={40}
               height={40}
-              className="h-10 w-10 rounded-md border border-emerald-500/20 bg-slate-900 p-1"
+              className="h-10 w-10 rounded-md border border-emerald-500/20 bg-background p-1"
             />
           )}
           <ChevronDown className="h-4 w-4 text-slate-500" />
         </div>
 
         {isListOpen && filteredPokemonNames.length > 0 && (
-          <div className="absolute z-20 mt-2 max-h-56 w-full overflow-y-auto rounded-xl border border-emerald-500/20 bg-slate-900 p-1 shadow-xl">
+          <div className="absolute z-20 mt-2 max-h-56 w-full overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-xl">
             {filteredPokemonNames.map((name) => (
               <button
                 key={name}
                 type="button"
                 onClick={() => void handleSelectPokemon(name)}
-                className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-200 hover:bg-emerald-500/15 hover:text-emerald-100"
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-foreground hover:bg-emerald-500/15 hover:text-emerald-700 dark:hover:text-emerald-100"
               >
                 {name}
               </button>

@@ -17,7 +17,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Link2, Trash2, Users } from "lucide-react";
+import { GripVertical, Heart, Link2, Skull, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { AddEncounterModal } from "@/components/add-encounter-modal";
@@ -231,9 +231,11 @@ type EncounterCardProps = {
   actionLabel: "Move to Party" | "Move to Box";
   onAction: () => void;
   onRelease: () => void;
+  onToggleFainted: () => void;
   onSelect: () => void;
   isActionPending: boolean;
   isReleasePending: boolean;
+  isFaintingPending: boolean;
   isSelected: boolean;
   isSwapTarget?: boolean;
 };
@@ -243,8 +245,11 @@ type EncounterCardBodyProps = {
   actionLabel: "Move to Party" | "Move to Box";
   onAction: () => void;
   onRelease: () => void;
+  onToggleFainted: () => void;
   isActionPending: boolean;
   isReleasePending: boolean;
+  isFaintingPending: boolean;
+  isFainted: boolean;
   dragHandle: React.ReactNode;
 };
 
@@ -277,8 +282,11 @@ function EncounterCardBody({
   actionLabel,
   onAction,
   onRelease,
+  onToggleFainted,
   isActionPending,
   isReleasePending,
+  isFaintingPending,
+  isFainted,
   dragHandle,
 }: EncounterCardBodyProps) {
   return (
@@ -288,6 +296,18 @@ function EncounterCardBody({
           {encounter.location ?? "Unknown"}
         </span>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleFainted();
+            }}
+            disabled={isFaintingPending}
+            className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+            aria-label={isFainted ? "Mark pair as revived" : "Mark pair as fainted"}
+          >
+            <Skull className={`h-3 w-3 ${isFainted ? "text-red-500" : ""}`} />
+          </button>
           <button
             type="button"
             onClick={(event) => {
@@ -330,7 +350,7 @@ function EncounterCardBody({
           disabled={isActionPending}
           className="rounded-md border border-emerald-700 bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-100 dark:hover:bg-emerald-500/30"
         >
-          {actionLabel}
+          {isFainted ? "Rest in Peace" : actionLabel}
         </button>
       </div>
     </div>
@@ -342,9 +362,11 @@ function SortablePartyCard({
   actionLabel,
   onAction,
   onRelease,
+  onToggleFainted,
   onSelect,
   isActionPending,
   isReleasePending,
+  isFaintingPending,
   isSelected,
   isSwapTarget = false,
 }: EncounterCardProps) {
@@ -359,15 +381,18 @@ function SortablePartyCard({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={onSelect}
-      className={`h-full min-h-[260px] rounded-lg border border-emerald-500/20 bg-white/80 dark:bg-slate-950/70 ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isSwapTarget ? "ring-2 ring-emerald-300 shadow-[0_0_0_2px_rgba(52,211,153,0.35)]" : ""} ${isDragging ? "opacity-30 scale-105" : ""}`}
+      className={`h-full min-h-[260px] rounded-lg border bg-white/80 dark:bg-slate-950/70 ${encounter.is_fainted ? "border-red-300 grayscale dark:border-red-700/60" : "border-emerald-500/20"} ${isSelected ? "ring-2 ring-emerald-500" : ""} ${isSwapTarget ? "ring-2 ring-emerald-300 shadow-[0_0_0_2px_rgba(52,211,153,0.35)]" : ""} ${isDragging ? "opacity-30 scale-105" : ""}`}
     >
       <EncounterCardBody
         encounter={encounter}
         actionLabel={actionLabel}
         onAction={onAction}
         onRelease={onRelease}
+        onToggleFainted={onToggleFainted}
         isActionPending={isActionPending}
         isReleasePending={isReleasePending}
+        isFaintingPending={isFaintingPending}
+        isFainted={encounter.is_fainted}
         dragHandle={
           <button
             type="button"
@@ -402,6 +427,14 @@ type BoxMiniCardProps = {
   isSwapTarget?: boolean;
 };
 
+type GraveyardMiniCardProps = {
+  encounter: EncounterRow;
+  onSelect: () => void;
+  onRevive: () => void;
+  isReviving: boolean;
+  isSelected: boolean;
+};
+
 function BoxMiniCard({
   encounter,
   spriteA,
@@ -428,6 +461,75 @@ function BoxMiniCard({
           )}
         </div>
         <div className="grid h-14 w-14 place-items-center rounded-md border border-emerald-500/20 bg-white dark:bg-slate-900">
+          {spriteB ? (
+            <Image src={spriteB} alt={`${encounter.pokemon_b} sprite`} width={52} height={52} />
+          ) : (
+            <span className="text-[10px] text-slate-500">N/A</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GraveyardMiniCard({ encounter, onSelect, onRevive, isReviving, isSelected }: GraveyardMiniCardProps) {
+  const [spriteA, setSpriteA] = useState<string | null>(null);
+  const [spriteB, setSpriteB] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadSprites = async () => {
+      try {
+        const [nextA, nextB] = await Promise.all([
+          fetchPokemonSprite(encounter.pokemon_a, controller.signal),
+          fetchPokemonSprite(encounter.pokemon_b, controller.signal),
+        ]);
+
+        if (!controller.signal.aborted) {
+          setSpriteA(nextA);
+          setSpriteB(nextB);
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
+      }
+    };
+
+    void loadSprites();
+    return () => controller.abort();
+  }, [encounter.pokemon_a, encounter.pokemon_b]);
+
+  return (
+    <div
+      onClick={onSelect}
+      className={`h-32 cursor-pointer rounded-lg border border-slate-300 bg-slate-100/90 px-2 pb-2 pt-1 grayscale transition hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900/80 ${isSelected ? "ring-2 ring-red-400" : ""}`}
+    >
+      <div className="mb-1 flex items-start justify-between">
+        <span className="block max-w-[calc(100%-2rem)] truncate rounded-full bg-red-500/15 px-2 py-1 text-[10px] uppercase text-red-700 dark:text-red-300">
+          {encounter.location}
+        </span>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onRevive();
+          }}
+          disabled={isReviving}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+          aria-label="Revive pair"
+        >
+          <Heart className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="flex items-center justify-center gap-2">
+        <div className="grid h-14 w-14 place-items-center rounded-md border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900">
+          {spriteA ? (
+            <Image src={spriteA} alt={`${encounter.pokemon_a} sprite`} width={52} height={52} />
+          ) : (
+            <span className="text-[10px] text-slate-500">N/A</span>
+          )}
+        </div>
+        <div className="grid h-14 w-14 place-items-center rounded-md border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900">
           {spriteB ? (
             <Image src={spriteB} alt={`${encounter.pokemon_b} sprite`} width={52} height={52} />
           ) : (
@@ -583,6 +685,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   const [pendingEncounterIds, setPendingEncounterIds] = useState<string[]>([]);
   const [selectedPairId, setSelectedPairId] = useState<string | null>(null);
   const [releasingEncounterIds, setReleasingEncounterIds] = useState<string[]>([]);
+  const [faintingEncounterIds, setFaintingEncounterIds] = useState<string[]>([]);
   const [pairIntel, setPairIntel] = useState<PairIntel | null>(null);
   const [intelLoading, setIntelLoading] = useState(false);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -613,8 +716,14 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
     };
   }, []);
 
-  const aliveEncounters = encounters.filter((encounter) => encounter.status?.toLowerCase() === "alive");
-  const orderedPartyEncounters = aliveEncounters
+  const nonFaintedEncounters = encounters.filter((encounter) => !encounter.is_fainted);
+  const fallenEncounters = encounters
+    .filter((encounter) => encounter.is_fainted)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const graveyardSlotCount =
+    Math.max(BOX_COLUMNS, Math.ceil(Math.max(1, fallenEncounters.length) / BOX_COLUMNS) * BOX_COLUMNS);
+  const graveyardSlots = Array.from({ length: graveyardSlotCount }, (_, index) => fallenEncounters[index] ?? null);
+  const orderedPartyEncounters = nonFaintedEncounters
     .filter((encounter) => encounter.is_in_party)
     .sort((a, b) => {
       const aIndex = a.order_index ?? Number.MAX_SAFE_INTEGER;
@@ -625,7 +734,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   const activeTeam = orderedPartyEncounters.slice(0, 6);
   const partyIds = activeTeam.map((encounter) => encounter.id);
   const partySlots = Array.from({ length: 6 }, (_, index) => activeTeam[index] ?? null);
-  const boxedAliveEncounters = aliveEncounters
+  const boxedEncounters = nonFaintedEncounters
     .filter((encounter) => !encounter.is_in_party)
     .sort((a, b) => {
       const aIndex = a.order_index ?? Number.MAX_SAFE_INTEGER;
@@ -633,9 +742,9 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
       if (aIndex !== bIndex) return aIndex - bIndex;
       return a.created_at.localeCompare(b.created_at);
     });
-  const boxedIds = boxedAliveEncounters.map((encounter) => encounter.id);
-  const boxSlotCount = Math.ceil((boxedAliveEncounters.length + BOX_COLUMNS) / BOX_COLUMNS) * BOX_COLUMNS;
-  const boxSlots = Array.from({ length: boxSlotCount }, (_, index) => boxedAliveEncounters[index] ?? null);
+  const boxedIds = boxedEncounters.map((encounter) => encounter.id);
+  const boxSlotCount = Math.ceil((boxedEncounters.length + BOX_COLUMNS) / BOX_COLUMNS) * BOX_COLUMNS;
+  const boxSlots = Array.from({ length: boxSlotCount }, (_, index) => boxedEncounters[index] ?? null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor),
@@ -794,6 +903,36 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
     await commitEncounterLayout(compactedPartyIds, nextBoxIds);
   }
 
+  async function toggleFainted(encounterId: string) {
+    if (faintingEncounterIds.includes(encounterId)) return;
+    const target = encounters.find((entry) => entry.id === encounterId);
+    if (!target) return;
+
+    const nextFainted = !target.is_fainted;
+    const nextOrderIndex = nextFainted ? null : boxedIds.length;
+    const updatePayload = {
+      is_fainted: nextFainted,
+      is_in_party: false,
+      order_index: nextOrderIndex,
+    };
+
+    setFaintingEncounterIds((current) => [...current, encounterId]);
+    setActionError(null);
+
+    const previous = encounters;
+    setEncounters((current) =>
+      current.map((entry) => (entry.id === encounterId ? { ...entry, ...updatePayload } : entry)),
+    );
+
+    const { error } = await supabase.from("encounters").update(updatePayload).eq("id", encounterId);
+    if (error) {
+      setEncounters(previous);
+      setActionError(`Failed to update fainted status: ${error.message}`);
+    }
+
+    setFaintingEncounterIds((current) => current.filter((id) => id !== encounterId));
+  }
+
   async function releaseEncounter(encounterId: string) {
     if (releasingEncounterIds.includes(encounterId)) return;
     const confirmed = window.confirm("Are you sure you want to release this pair?");
@@ -945,11 +1084,11 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
 
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors">
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-emerald-500/20 bg-white/95 backdrop-blur dark:bg-slate-950/95">
+      <header className="fixed inset-x-0 top-0 z-[60] border-b border-border bg-background">
         <div className="mx-auto flex h-[60px] max-w-[1700px] items-center justify-between px-4 md:px-6 xl:px-8">
           <div className="flex items-center gap-2">
-            <p className="text-sm font-semibold tracking-wide text-emerald-600 dark:text-emerald-300">Nuzl</p>
-            <p className="text-xs text-slate-600 dark:text-slate-400">
+            <p className="text-sm font-semibold tracking-wide text-foreground">Nuzl</p>
+            <p className="text-xs text-foreground/70">
               {realtimeConnected ? "Connected" : "Connecting..."}
             </p>
           </div>
@@ -985,7 +1124,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                 <CardHeader className="flex flex-row items-start justify-between">
                   <div>
                     <CardTitle className="text-2xl">Live Team</CardTitle>
-                    <CardDescription>Only alive pairs where is_in_party is true (max 6).</CardDescription>
+                    <CardDescription>Only non-fainted pairs where is_in_party is true (max 6).</CardDescription>
                   </div>
                   <Users className="h-5 w-5 text-emerald-400" />
                 </CardHeader>
@@ -1001,12 +1140,14 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                             <SortablePartyCard
                               key={encounter.id}
                               encounter={encounter}
-                              actionLabel="Move to Box"
+                              actionLabel={encounter.is_fainted ? "Move to Box" : "Move to Box"}
                               onAction={() => void moveEncounter(encounter.id, false)}
                               onRelease={() => void releaseEncounter(encounter.id)}
+                              onToggleFainted={() => void toggleFainted(encounter.id)}
                               onSelect={() => setSelectedPairId(encounter.id)}
                               isActionPending={pendingEncounterIds.includes(encounter.id)}
                               isReleasePending={releasingEncounterIds.includes(encounter.id)}
+                              isFaintingPending={faintingEncounterIds.includes(encounter.id)}
                               isSelected={selectedPairId === encounter.id}
                               isSwapTarget={hoveredSwapTargetId === encounter.id && activeDragId !== encounter.id}
                             />
@@ -1030,7 +1171,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-2xl">PC Box</CardTitle>
-                    <CardDescription>Alive encounters where is_in_party is false.</CardDescription>
+                    <CardDescription>Non-fainted encounters where is_in_party is false.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <DroppableGrid
@@ -1053,6 +1194,38 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                         )}
                       </SortableContext>
                     </DroppableGrid>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-2xl">The Graveyard</CardTitle>
+                    <CardDescription>Fainted Soul Link pairs memorialized here.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid min-h-[160px] grid-cols-2 gap-2 rounded-xl bg-slate-100/60 p-2 dark:bg-slate-900/40 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
+                      {graveyardSlots.map((encounter, index) =>
+                        encounter ? (
+                          <GraveyardMiniCard
+                            key={`grave-${encounter.id}`}
+                            encounter={encounter}
+                            onSelect={() => setSelectedPairId(encounter.id)}
+                            onRevive={() => void toggleFainted(encounter.id)}
+                            isReviving={faintingEncounterIds.includes(encounter.id)}
+                            isSelected={selectedPairId === encounter.id}
+                          />
+                        ) : (
+                          <div
+                            key={`grave-empty-slot-${index}`}
+                            className="grid h-32 place-items-center rounded-lg border border-dashed border-slate-300 bg-slate-100/70 p-4 text-center dark:border-slate-700 dark:bg-slate-900/60"
+                          >
+                            <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                              EMPTY SLOT
+                            </p>
+                          </div>
+                        ),
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               </div>
