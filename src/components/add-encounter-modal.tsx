@@ -65,6 +65,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
     ability_b: "",
     status: "alive",
     is_in_party: false,
+    is_fainted: false,
     order_index: null as number | null,
   });
   const [abilityOptionsA, setAbilityOptionsA] = useState<string[]>([]);
@@ -268,7 +269,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
         .from("encounters")
         .insert(validatedEncounter)
         .select(
-          "id, session_id, location, pokemon_a, nickname_a, ability_a, pokemon_b, nickname_b, ability_b, status, is_in_party, order_index, created_at",
+          "id, session_id, location, pokemon_a, nickname_a, ability_a, pokemon_b, nickname_b, ability_b, status, is_in_party, is_fainted, order_index, created_at",
         )
         .single();
 
@@ -292,6 +293,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
         ability_b: "",
         status: "alive",
         is_in_party: false,
+        is_fainted: false,
         order_index: null,
       });
       setAbilityOptionsA([]);
@@ -316,17 +318,19 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/80 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-2xl border border-emerald-500/30 bg-slate-900 p-5 shadow-[0_20px_60px_-25px_rgba(16,185,129,0.45)]">
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 dark:bg-slate-900/50">
+          <div className="w-full max-w-2xl rounded-2xl border border-border bg-background p-5 text-foreground shadow-sm">
             <div className="mb-5 flex items-start justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">Capture Engine</p>
-                <h2 className="mt-1 text-xl font-semibold text-slate-100">Add New Encounter</h2>
+                <p className="text-xs uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">
+                  Capture Engine
+                </p>
+                <h2 className="mt-1 text-xl font-semibold text-foreground">Add New Encounter</h2>
               </div>
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="rounded-md border border-emerald-500/20 p-1 text-slate-300 hover:bg-emerald-500/15"
+                className="rounded-md border border-border p-1 text-muted-foreground hover:bg-muted/60"
                 aria-label="Close add encounter modal"
               >
                 <X className="h-4 w-4" />
@@ -342,7 +346,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
                     setFormState((state) => ({ ...state, session_id: event.target.value }))
                   }
                   disabled={!hasSessions}
-                  className="w-full rounded-xl border border-emerald-500/20 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none"
                 >
                   {!hasSessions && <option value="">{sessionPlaceholder}</option>}
                   {sessions.map((session) => (
@@ -354,7 +358,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
               </div>
 
               {!hasSessions && (
-                <div className="rounded-xl border border-emerald-500/20 bg-slate-950/60 p-3">
+                <div className="rounded-xl border border-border bg-muted/40 p-3">
                   {!showCreateSessionForm ? (
                     <button
                       type="button"
@@ -373,7 +377,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
                         value={sessionName}
                         onChange={(event) => setSessionName(event.target.value)}
                         placeholder="e.g. FireRed Soul Link"
-                        className="w-full rounded-xl border border-emerald-500/20 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                       />
                       {sessionErrorMessage && (
                         <p className="text-sm text-red-300">{sessionErrorMessage}</p>
@@ -409,7 +413,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
                     setFormState((state) => ({ ...state, location: event.target.value }))
                   }
                   placeholder="e.g. Route 34"
-                  className="w-full rounded-xl border border-emerald-500/20 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                 />
               </div>
 
@@ -440,7 +444,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
                       setFormState((state) => ({ ...state, nickname_a: event.target.value }))
                     }
                     placeholder="e.g. Sparks"
-                    className="w-full rounded-xl border border-emerald-500/20 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                   />
                 </div>
                 <div className="space-y-2">
@@ -454,7 +458,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
                       setFormState((state) => ({ ...state, nickname_b: event.target.value }))
                     }
                     placeholder="e.g. Nimbus"
-                    className="w-full rounded-xl border border-emerald-500/20 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                   />
                 </div>
               </div>
@@ -469,7 +473,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
                     onChange={(event) =>
                       setFormState((state) => ({ ...state, ability_a: event.target.value }))
                     }
-                    className="w-full rounded-xl border border-emerald-500/20 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none"
                   >
                     <option value="">Select Ability A</option>
                     {abilityOptionsA.map((ability) => (
@@ -488,7 +492,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
                     onChange={(event) =>
                       setFormState((state) => ({ ...state, ability_b: event.target.value }))
                     }
-                    className="w-full rounded-xl border border-emerald-500/20 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none"
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none"
                   >
                     <option value="">Select Ability B</option>
                     {abilityOptionsB.map((ability) => (
@@ -507,7 +511,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
                   onChange={(event) =>
                     setFormState((state) => ({ ...state, status: event.target.value }))
                   }
-                  className="w-full rounded-xl border border-emerald-500/20 bg-slate-950/80 px-3 py-2 text-sm text-slate-100 outline-none"
+                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none"
                 >
                   <option value="alive">alive</option>
                   <option value="dead">dead</option>
