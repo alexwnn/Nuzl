@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { ChevronDown, Plus, X } from "lucide-react";
 
 import { encounterInsertSchema } from "@/lib/encounter-schema";
 import { sessionInsertSchema } from "@/lib/session-schema";
@@ -18,6 +18,14 @@ type AddEncounterModalProps = {
   sessions: SessionRow[];
   onEncounterAdded?: (encounter: EncounterRow) => void;
   onSessionAdded?: (session: SessionRow) => void;
+};
+
+type AbilityComboboxProps = {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  placeholder: string;
 };
 
 /*
@@ -46,6 +54,82 @@ async function verifyPokemonExists(name: string) {
   }
 }
 
+/*
+Input: Current ability value, API-suggested ability list, and parent onChange setter.
+Transformation: Filters options as user types and appends a "Create ..." option when input is non-empty
+and not an exact match of known abilities.
+Output: Sets either a suggested ability or a custom typed ability back into the encounter form state.
+*/
+function AbilityCombobox({ label, value, options, onChange, placeholder }: AbilityComboboxProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const normalizedQuery = value.trim().toLowerCase();
+
+  const filteredOptions = useMemo(() => {
+    if (!normalizedQuery) return options.slice(0, 12);
+    return options.filter((ability) => ability.toLowerCase().includes(normalizedQuery)).slice(0, 12);
+  }, [normalizedQuery, options]);
+
+  const hasExactMatch = useMemo(
+    () => options.some((ability) => ability.toLowerCase() === normalizedQuery),
+    [normalizedQuery, options],
+  );
+
+  const showCreateOption = normalizedQuery.length > 0 && !hasExactMatch;
+
+  return (
+    <div className="space-y-2">
+      <label className="text-xs uppercase tracking-[0.18em] text-slate-400">{label}</label>
+      <div className="relative">
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-2">
+          <input
+            type="text"
+            value={value}
+            onFocus={() => setIsOpen(true)}
+            onBlur={() => setTimeout(() => setIsOpen(false), 140)}
+            onChange={(event) => {
+              onChange(event.target.value);
+              setIsOpen(true);
+            }}
+            placeholder={placeholder}
+            className="w-full bg-transparent px-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+          />
+          <ChevronDown className="h-4 w-4 text-slate-500" />
+        </div>
+
+        {isOpen && (showCreateOption || filteredOptions.length > 0) && (
+          <div className="absolute z-20 mt-2 max-h-56 w-full overflow-y-auto rounded-xl border border-border bg-card p-1 shadow-xl">
+            {showCreateOption && (
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(value.trim());
+                  setIsOpen(false);
+                }}
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-foreground hover:bg-emerald-500/15 hover:text-emerald-700 dark:hover:text-emerald-100"
+              >
+                Create &quot;{value.trim()}&quot;
+              </button>
+            )}
+            {filteredOptions.map((ability) => (
+              <button
+                key={`${label}-${ability}`}
+                type="button"
+                onClick={() => {
+                  onChange(ability);
+                  setIsOpen(false);
+                }}
+                className="w-full rounded-lg px-3 py-2 text-left text-sm text-foreground hover:bg-emerald-500/15 hover:text-emerald-700 dark:hover:text-emerald-100"
+              >
+                {ability}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }: AddEncounterModalProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -63,7 +147,6 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
     pokemon_b: "",
     nickname_b: "",
     ability_b: "",
-    status: "alive",
     is_in_party: false,
     is_fainted: false,
     order_index: null as number | null,
@@ -97,7 +180,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
     setFormState((state) => ({
       ...state,
       pokemon_a: payload.name || state.pokemon_a,
-      ability_a: payload.abilities[0] ?? "",
+      ability_a: "",
     }));
   }, []);
 
@@ -114,7 +197,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
     setFormState((state) => ({
       ...state,
       pokemon_b: payload.name || state.pokemon_b,
-      ability_b: payload.abilities[0] ?? "",
+      ability_b: "",
     }));
   }, []);
 
@@ -239,7 +322,43 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
         return;
       }
 
-      const parsed = encounterInsertSchema.safeParse(formState);
+      /*
+      Input: Current encounter draft before insert.
+      Transformation: Counts current party/box rows, then computes insertion target and tail index.
+      Output: New row lands at the end of party when size < 6, otherwise at the end of the PC box list.
+      */
+      const [{ count: partyCount, error: partyCountError }, { count: boxCount, error: boxCountError }] =
+        await Promise.all([
+          supabase.from("encounters").select("*", { count: "exact", head: true }).eq("is_in_party", true),
+          supabase
+            .from("encounters")
+            .select("*", { count: "exact", head: true })
+            .eq("is_in_party", false)
+            .eq("is_fainted", false),
+        ]);
+
+      if (partyCountError || boxCountError) {
+        setErrorMessage(partyCountError?.message ?? boxCountError?.message ?? "Unable to resolve party count.");
+        return;
+      }
+
+      const nextInParty = (partyCount ?? 0) < 6;
+      const nextOrderIndex = nextInParty ? (partyCount ?? 0) : (boxCount ?? 0);
+
+      const parsed = encounterInsertSchema.safeParse({
+        session_id: selectedSession,
+        location,
+        pokemon_a: pokemonA,
+        nickname_a: nicknameA,
+        ability_a: abilityA,
+        pokemon_b: pokemonB,
+        nickname_b: nicknameB,
+        ability_b: abilityB,
+        status: "alive",
+        is_fainted: false,
+        is_in_party: nextInParty,
+        order_index: nextOrderIndex,
+      });
       if (!parsed.success) {
         const field = parsed.error.issues[0]?.path[0];
         if (field === "session_id") {
@@ -291,7 +410,6 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
         pokemon_b: "",
         nickname_b: "",
         ability_b: "",
-        status: "alive",
         is_in_party: false,
         is_fainted: false,
         order_index: null,
@@ -464,59 +582,20 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <label className="text-xs uppercase tracking-[0.18em] text-slate-400">
-                    Ability A
-                  </label>
-                  <select
-                    value={formState.ability_a}
-                    onChange={(event) =>
-                      setFormState((state) => ({ ...state, ability_a: event.target.value }))
-                    }
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none"
-                  >
-                    <option value="">Select Ability A</option>
-                    {abilityOptionsA.map((ability) => (
-                      <option key={ability} value={ability}>
-                        {ability}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs uppercase tracking-[0.18em] text-slate-400">
-                    Ability B
-                  </label>
-                  <select
-                    value={formState.ability_b}
-                    onChange={(event) =>
-                      setFormState((state) => ({ ...state, ability_b: event.target.value }))
-                    }
-                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none"
-                  >
-                    <option value="">Select Ability B</option>
-                    {abilityOptionsB.map((ability) => (
-                      <option key={ability} value={ability}>
-                        {ability}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs uppercase tracking-[0.18em] text-slate-400">Status</label>
-                <select
-                  value={formState.status}
-                  onChange={(event) =>
-                    setFormState((state) => ({ ...state, status: event.target.value }))
-                  }
-                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none"
-                >
-                  <option value="alive">alive</option>
-                  <option value="dead">dead</option>
-                  <option value="boxed">boxed</option>
-                </select>
+                <AbilityCombobox
+                  label="Ability A"
+                  value={formState.ability_a}
+                  options={abilityOptionsA}
+                  onChange={(ability_a) => setFormState((state) => ({ ...state, ability_a }))}
+                  placeholder="Select or type ability..."
+                />
+                <AbilityCombobox
+                  label="Ability B"
+                  value={formState.ability_b}
+                  options={abilityOptionsB}
+                  onChange={(ability_b) => setFormState((state) => ({ ...state, ability_b }))}
+                  placeholder="Select or type ability..."
+                />
               </div>
 
               {errorMessage && (
@@ -528,7 +607,7 @@ export function AddEncounterModal({ sessions, onEncounterAdded, onSessionAdded }
               <div className="flex justify-end">
                 <button
                   type="submit"
-                  disabled={!hasSessions || isSaving}
+                  disabled={!hasSessions || isSaving || !formState.ability_a.trim() || !formState.ability_b.trim()}
                   className="rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25"
                 >
                   {isSaving ? "Saving..." : "Save Encounter"}

@@ -40,6 +40,8 @@ type PokeApiListResponse = {
 
 let pokemonNameCache: string[] | null = null;
 let pokemonNameCachePromise: Promise<string[]> | null = null;
+const pokemonListSpriteCache = new Map<string, string | null>();
+const pokemonListSpritePromiseCache = new Map<string, Promise<string | null>>();
 
 /*
 Input: No direct user input; called when autocomplete initializes.
@@ -67,6 +69,40 @@ async function getCachedPokemonNames() {
   return pokemonNameCachePromise;
 }
 
+async function getCachedListSprite(name: string) {
+  const slug = toPokemonSlug(name);
+  if (!slug) return null;
+  if (pokemonListSpriteCache.has(slug)) {
+    return pokemonListSpriteCache.get(slug) ?? null;
+  }
+
+  if (pokemonListSpritePromiseCache.has(slug)) {
+    return pokemonListSpritePromiseCache.get(slug)!;
+  }
+
+  const spritePromise = (async () => {
+    try {
+      const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${slug}`);
+      if (!response.ok) {
+        pokemonListSpriteCache.set(slug, null);
+        return null;
+      }
+      const payload: PokeApiPokemon = await response.json();
+      const sprite = payload.sprites.front_default;
+      pokemonListSpriteCache.set(slug, sprite);
+      return sprite;
+    } catch {
+      pokemonListSpriteCache.set(slug, null);
+      return null;
+    } finally {
+      pokemonListSpritePromiseCache.delete(slug);
+    }
+  })();
+
+  pokemonListSpritePromiseCache.set(slug, spritePromise);
+  return spritePromise;
+}
+
 /*
 Input: A user-typed Pokemon string.
 Transformation: Converts the string into a stable, lowercase API slug.
@@ -88,6 +124,7 @@ export function PokemonSearch({ label, value, onChange, onPokemonResolved }: Pok
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [isListOpen, setIsListOpen] = useState(false);
+  const [listSprites, setListSprites] = useState<Record<string, string | null>>({});
   const lastResolvedSignatureRef = useRef<string>("");
 
   const pokemonSlug = useMemo(() => toPokemonSlug(value), [value]);
@@ -221,6 +258,34 @@ export function PokemonSearch({ label, value, onChange, onPokemonResolved }: Pok
     };
   }, [emitResolvedIfChanged, pokemonSlug]);
 
+  useEffect(() => {
+    if (!isListOpen || filteredPokemonNames.length === 0) return;
+
+    let isCancelled = false;
+    const preloadListSprites = async () => {
+      const entries = await Promise.all(
+        filteredPokemonNames.map(async (name) => {
+          const sprite = await getCachedListSprite(name);
+          return [name, sprite] as const;
+        }),
+      );
+
+      if (isCancelled) return;
+      setListSprites((current) => {
+        const next = { ...current };
+        for (const [name, sprite] of entries) {
+          next[name] = sprite;
+        }
+        return next;
+      });
+    };
+
+    void preloadListSprites();
+    return () => {
+      isCancelled = true;
+    };
+  }, [filteredPokemonNames, isListOpen]);
+
   /*
   Input: A selected Pokemon name from the autocomplete list.
   Transformation: Updates the input immediately and resolves details right away for instant feedback.
@@ -296,9 +361,22 @@ export function PokemonSearch({ label, value, onChange, onPokemonResolved }: Pok
                 key={name}
                 type="button"
                 onClick={() => void handleSelectPokemon(name)}
-                className="w-full rounded-lg px-3 py-2 text-left text-sm text-foreground hover:bg-emerald-500/15 hover:text-emerald-700 dark:hover:text-emerald-100"
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-foreground hover:bg-emerald-500/15 hover:text-emerald-700 dark:hover:text-emerald-100"
               >
-                {name}
+                {listSprites[name] ? (
+                  <Image
+                    src={listSprites[name] ?? ""}
+                    alt={`${name} sprite`}
+                    width={32}
+                    height={32}
+                    className="h-8 w-8 rounded-md border border-border bg-background p-0.5"
+                  />
+                ) : (
+                  <div className="grid h-8 w-8 place-items-center rounded-md border border-border bg-muted/40 text-[9px] text-muted-foreground">
+                    N/A
+                  </div>
+                )}
+                <span>{name}</span>
               </button>
             ))}
           </div>
