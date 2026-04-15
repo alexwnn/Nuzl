@@ -31,6 +31,7 @@ import { CollapsibleSidebar } from "@/components/collapsible-sidebar";
 import { ModeToggle } from "@/components/mode-toggle";
 import { PokemonNameplate } from "@/components/pokemon-nameplate";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatAbilityName } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import type { EncounterRow, SessionRow } from "@/lib/database.types";
 
@@ -177,14 +178,15 @@ function getDefenseTone(multiplier: number) {
   if (multiplier < 1) {
     return {
       container: "border-emerald-500/35 bg-emerald-500/10",
-      value: "text-emerald-700 dark:text-emerald-200",
+      value: "font-semibold text-emerald-700 dark:text-emerald-200",
     };
   }
 
   if (multiplier > 1) {
     return {
-      container: "border-red-500/35 bg-red-500/10",
-      value: "text-red-200",
+      container:
+        "border-red-200 bg-red-100 dark:border-red-500/35 dark:bg-red-500/10",
+      value: "font-bold text-red-900 dark:font-semibold dark:text-red-200",
     };
   }
 
@@ -1453,7 +1455,6 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                 <CardHeader className="flex flex-row items-start justify-between">
                   <div>
                     <CardTitle className="text-2xl">Live Team</CardTitle>
-                    <CardDescription>Only non-fainted pairs where is_in_party is true (max 6).</CardDescription>
                   </div>
                   <Users className="h-5 w-5 text-emerald-400" />
                 </CardHeader>
@@ -1608,7 +1609,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                                   Nickname: {selectedPair.nickname_a?.trim() ? selectedPair.nickname_a : "-"}
                                 </p>
                                 <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                                  Ability: {selectedPair.ability_a?.trim() ? selectedPair.ability_a : "-"}
+                                  Ability: {formatAbilityName(selectedPair.ability_a)}
                                 </p>
                               </div>
                               <div className="flex flex-wrap gap-1">
@@ -1661,7 +1662,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                                   Nickname: {selectedPair.nickname_b?.trim() ? selectedPair.nickname_b : "-"}
                                 </p>
                                 <p className="text-xs text-emerald-700 dark:text-emerald-300">
-                                  Ability: {selectedPair.ability_b?.trim() ? selectedPair.ability_b : "-"}
+                                  Ability: {formatAbilityName(selectedPair.ability_b)}
                                 </p>
                               </div>
                               <div className="flex flex-wrap gap-1">

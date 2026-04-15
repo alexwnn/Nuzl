@@ -3,6 +3,8 @@
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { formatAbilityName } from "@/lib/utils";
+
 /*
 Input: Pokemon species name plus optional nickname from encounter rows.
 Transformation: Resolves a lowercase PokeAPI slug and fetches the matching front sprite.
@@ -122,7 +124,7 @@ export function PokemonNameplate({ pokemonName, nickname, ability }: PokemonName
         {toDisplayName(pokemonName)}
       </p>
       <p className="w-full truncate text-[11px] text-slate-400">{nickname ? `"${toDisplayName(nickname)}"` : "-"}</p>
-      <p className="mt-auto w-full truncate text-[11px] text-emerald-300">{toDisplayName(ability ?? "-")}</p>
+      <p className="mt-auto w-full truncate text-[11px] text-emerald-300">{formatAbilityName(ability)}</p>
     </div>
   );
 }

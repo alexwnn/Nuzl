@@ -5,6 +5,7 @@ import { ChevronDown, Plus, X } from "lucide-react";
 
 import { encounterInsertSchema } from "@/lib/encounter-schema";
 import { sessionInsertSchema } from "@/lib/session-schema";
+import { formatAbilityName } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import type { EncounterRow, SessionRow } from "@/lib/database.types";
 import { PokemonSearch } from "@/components/pokemon-search";
@@ -156,7 +157,7 @@ function AbilityCombobox({ label, value, options, onChange, placeholder }: Abili
                 }}
                 className="w-full rounded-lg px-3 py-2 text-left text-sm text-foreground hover:bg-emerald-500/15 hover:text-emerald-700 dark:hover:text-emerald-100"
               >
-                {ability}
+                {formatAbilityName(ability)}
               </button>
             ))}
           </div>
