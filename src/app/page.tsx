@@ -1,27 +1,42 @@
-import { connection } from "next/server";
+"use client";
 
-import { DashboardContent } from "@/components/dashboard-content";
-import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 
 /*
-Input: Initial route request for the dashboard page.
-Transformation: Fetches server-side snapshots of encounters and sessions to hydrate the client UI.
-Output: Returns a client dashboard component that handles rendering and realtime updates.
+Input: Visitor arriving at the root route (`/`).
+Transformation: Generates a short shareable session slug and redirects into the dynamic session dashboard route.
+Output: Sends users to `/session/[sessionId]` where live run state is loaded.
 */
-export default async function Home() {
-  await connection();
+function generateSessionId() {
+  const colors = ["blue", "emerald", "violet", "scarlet", "gold", "silver"];
+  const pokemon = ["mew", "eevee", "riolu", "torchic", "gible", "zorua"];
+  const randomColor = colors[Math.floor(Math.random() * colors.length)];
+  const randomPokemon = pokemon[Math.floor(Math.random() * pokemon.length)];
+  const suffix = Math.floor(100 + Math.random() * 900);
+  return `${randomColor}-${randomPokemon}-${suffix}`;
+}
 
-  const { data: encountersData } = await supabase
-    .from("encounters")
-    .select(
-      "id, session_id, location, pokemon_a, nickname_a, ability_a, pokemon_b, nickname_b, ability_b, status, is_in_party, is_fainted, order_index, created_at",
-    )
-    .order("created_at", { ascending: false });
+export default function Home() {
+  const router = useRouter();
 
-  const { data: sessionsData } = await supabase
-    .from("sessions")
-    .select("id, name, created_at")
-    .order("created_at", { ascending: false });
-
-  return <DashboardContent initialEncounters={encountersData ?? []} sessions={sessionsData ?? []} />;
+  return (
+    <main className="mx-auto grid min-h-screen w-full max-w-screen-md place-items-center px-6 py-12">
+      <div className="w-full rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
+        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Nuzl Session Hub</p>
+        <h1 className="mt-3 text-2xl font-semibold text-foreground">Start a Shared Run</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Create a unique session link and invite friends to track the same Soul Link run.
+        </p>
+        <button
+          type="button"
+          onClick={() => router.push(`/session/${generateSessionId()}`)}
+          className="mt-6 inline-flex items-center gap-2 rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25"
+        >
+          <Plus className="h-4 w-4" />
+          Start New Session
+        </button>
+      </div>
+    </main>
+  );
 }

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { useParams } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -981,6 +982,7 @@ function updateEncounterOptimistically(current: EncounterRow[], encounter: Encou
 }
 
 export function DashboardContent({ initialEncounters, sessions }: DashboardContentProps) {
+  const params = useParams<{ sessionId?: string }>();
   const [encounters, setEncounters] = useState<EncounterRow[]>(initialEncounters);
   const [sessionOptions, setSessionOptions] = useState<SessionRow[]>(sessions);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
@@ -994,6 +996,8 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   const [intelLoading, setIntelLoading] = useState(false);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [hoveredSwapTargetId, setHoveredSwapTargetId] = useState<string | null>(null);
+  const routeSessionId = typeof params?.sessionId === "string" ? params.sessionId : null;
+  const currentSessionId = routeSessionId ?? sessionOptions[0]?.name ?? "No Session";
 
   useEffect(() => {
     const channel = supabase
@@ -1312,6 +1316,16 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
     setHoveredSwapTargetId(null);
   }
 
+  async function handleCopyLink() {
+    if (typeof window === "undefined") return;
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast.success("Session link copied.");
+    } catch {
+      toast.error("Failed to copy session link.");
+    }
+  }
+
   /*
   Input: dnd-kit drag end event containing active card id and target dropzone/card id.
   Transformation: Handles party reordering, box reordering, party<->box moves, and cross-swaps.
@@ -1421,6 +1435,16 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
             <p className="text-xs text-foreground/70">
               {realtimeConnected ? "Connected" : "Connecting..."}
             </p>
+            <span className="rounded-md border border-border bg-card px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-foreground/80">
+              {currentSessionId}
+            </span>
+            <button
+              type="button"
+              onClick={() => void handleCopyLink()}
+              className="rounded-md border border-border bg-card px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-foreground/80 hover:bg-muted/60"
+            >
+              Copy Link
+            </button>
           </div>
           <div className="flex items-center gap-2">
             <ModeToggle />
