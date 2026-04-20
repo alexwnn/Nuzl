@@ -27,7 +27,6 @@ import { Heart, Link2, Pencil, Skull, Sparkles, Trash2, Users } from "lucide-rea
 import { toast } from "sonner";
 
 import { AddEncounterModal } from "@/components/add-encounter-modal";
-import { CollapsibleSidebar } from "@/components/collapsible-sidebar";
 import { ModeToggle } from "@/components/mode-toggle";
 import { PokemonNameplate } from "@/components/pokemon-nameplate";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1415,8 +1414,8 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
 
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors">
-      <header className="fixed inset-x-0 top-0 z-[60] border-b border-border bg-background">
-        <div className="mx-auto flex h-[60px] max-w-[1700px] items-center justify-between px-4 md:px-6 xl:px-8">
+      <header className="sticky top-0 z-[60] border-b border-border bg-background/80 backdrop-blur-md">
+        <div className="mx-auto flex h-[60px] w-full max-w-screen-2xl items-center justify-between px-4 md:px-6 xl:px-8">
           <div className="flex items-center gap-2">
             <p className="text-sm font-semibold tracking-wide text-foreground">Nuzl</p>
             <p className="text-xs text-foreground/70">
@@ -1438,9 +1437,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-[1700px]">
-        <CollapsibleSidebar />
-        <main className="w-full flex-1 px-4 pb-6 pt-20 md:px-6 xl:px-8">
+      <main className="mx-auto w-full max-w-screen-2xl px-4 pb-6 pt-6 md:px-6 xl:px-8">
           <DndContext
             sensors={sensors}
             collisionDetection={rectIntersection}
@@ -1510,7 +1507,6 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-2xl">PC Box</CardTitle>
-                    <CardDescription>Non-fainted encounters where is_in_party is false.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <DroppableGrid
@@ -1539,7 +1535,6 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-2xl">The Graveyard</CardTitle>
-                    <CardDescription>Fainted Soul Link pairs memorialized here.</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="grid min-h-[160px] grid-cols-2 gap-2 rounded-xl bg-slate-100/60 p-2 dark:bg-slate-900/40 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
@@ -1766,8 +1761,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
           {actionError && (
             <p className="mt-3 text-xs text-amber-300">{actionError}</p>
           )}
-        </main>
-      </div>
+      </main>
     </div>
   );
 }
