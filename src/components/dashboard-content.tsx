@@ -1622,7 +1622,7 @@ export function DashboardContent({ initialEncounters }: DashboardContentProps) {
 
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-2xl">PC Box</CardTitle>
+                    <CardTitle className="text-2xl">PC</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <DroppableGrid
@@ -1650,7 +1650,7 @@ export function DashboardContent({ initialEncounters }: DashboardContentProps) {
 
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-2xl">The Graveyard</CardTitle>
+                    <CardTitle className="text-2xl">Graveyard</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="grid min-h-[160px] grid-cols-2 gap-2 rounded-xl bg-slate-100/60 p-2 dark:bg-slate-900/40 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
@@ -1682,7 +1682,7 @@ export function DashboardContent({ initialEncounters }: DashboardContentProps) {
 
               <Card className="xl:col-span-5 xl:sticky xl:top-20 xl:h-[calc(100vh-96px)] xl:overflow-y-auto bg-card shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-2xl">Soul Link Intel</CardTitle>
+                  <CardTitle className="text-2xl">Info</CardTitle>
                   <CardDescription>Types and base stats for the selected pair.</CardDescription>
                 </CardHeader>
                 <CardContent>

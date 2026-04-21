@@ -123,9 +123,9 @@ export function TeamAnalysis({ encounters }: TeamAnalysisProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-2xl">Strategic Weakness Matrix</CardTitle>
+        <CardTitle className="text-2xl">Team Weaknesses</CardTitle>
         <CardDescription>
-          Net defensive score for the Live Team across all 18 attacking types.
+          Net defensive score for the Live Team across types.
           {isLoading && partyEncounters.length > 0 ? " Loading types..." : null}
         </CardDescription>
       </CardHeader>
