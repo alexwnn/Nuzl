@@ -1,16 +1,17 @@
 "use client";
 
 import { Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
 import { useSyncExternalStore } from "react";
 
+import { useAppTheme } from "@/components/theme-context";
+
 /*
-Input: Theme context from next-themes.
+Input: Theme mode from AppThemeContext (thin wrapper over next-themes).
 Transformation: Guards rendering until mounted, then toggles between `light` and `dark`.
 Output: A header-ready icon button that switches dashboard theme modes.
 */
 export function ModeToggle() {
-  const { resolvedTheme, setTheme } = useTheme();
+  const { themeMode, toggleThemeMode } = useAppTheme();
   const mounted = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -21,16 +22,18 @@ export function ModeToggle() {
     return null;
   }
 
-  const isDark = resolvedTheme === "dark";
+  const isDark = themeMode === "dark";
 
   return (
     <button
       type="button"
-      onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 dark:border-emerald-500/30 dark:bg-slate-900 dark:text-emerald-200 dark:hover:bg-emerald-500/10"
-      aria-label="Toggle theme"
+      onClick={toggleThemeMode}
+      className="inline-flex h-9 items-center gap-2 rounded-lg border border-border bg-card px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-foreground transition hover:bg-muted/60"
+      aria-label={`Toggle theme (current: ${isDark ? "Dark" : "Light"})`}
+      title={`Mode: ${isDark ? "Dark" : "Light"} — click to toggle`}
     >
-      {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      {isDark ? <Sun className="h-4 w-4 text-accent" /> : <Moon className="h-4 w-4 text-accent" />}
+      <span>{isDark ? "Dark" : "Light"}</span>
     </button>
   );
 }

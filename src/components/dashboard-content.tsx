@@ -27,11 +27,12 @@ import { CSS } from "@dnd-kit/utilities";
 import { Heart, Link2, Pencil, Skull, Sparkles, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 
+import { AccentToggle } from "@/components/accent-toggle";
 import { AddEncounterModal } from "@/components/add-encounter-modal";
+import { FontToggle } from "@/components/font-toggle";
 import { ModeToggle } from "@/components/mode-toggle";
 import { PokemonNameplate } from "@/components/pokemon-nameplate";
 import { TeamAnalysis } from "@/components/team-analysis";
-import { VibeToggle } from "@/components/vibe-toggle";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatAbilityName } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
@@ -259,7 +260,7 @@ function DroppableGrid({ id, className, children }: DroppableGridProps) {
   return (
     <div
       ref={setNodeRef}
-      className={`${className} ${isOver ? "ring-1 ring-emerald-400 ring-offset-2 ring-offset-slate-950" : ""}`}
+      className={`${className} ${isOver ? "ring-1 ring-accent ring-offset-2 ring-offset-background" : ""}`}
     >
       {renderedChildren}
     </div>
@@ -537,7 +538,7 @@ function EncounterCardBody({
   return (
     <div className="flex h-full min-h-[260px] flex-col p-4">
       <div className="mb-2 flex items-center justify-between">
-        <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[11px] text-emerald-700 dark:text-emerald-300">
+        <span className="rounded-full border border-accent/30 bg-accent/15 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-accent">
           {encounter.location ?? "Unknown"}
         </span>
         <div className="flex items-center gap-2">
@@ -574,7 +575,7 @@ function EncounterCardBody({
             onEncounterUpdated={onEncounterUpdated}
             trigger={
               <span
-                className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 px-2 py-1 text-xs text-slate-700 hover:bg-emerald-500/10 dark:text-slate-300"
+                className="inline-flex items-center gap-1 rounded-md border border-accent/45 px-2 py-1 text-xs text-accent hover:bg-accent/10"
               >
                 <Pencil className="h-3 w-3" />
                 Edit
@@ -595,7 +596,7 @@ function EncounterCardBody({
               void handleOpenEvolutionMenu("a");
             }}
             disabled={isEvolvingA || evolutionLoadingSlot === "a"}
-            className="absolute -right-2 top-0 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-500/30 bg-background text-emerald-700 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-300"
+            className="absolute -right-2 top-0 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-accent bg-accent text-white shadow-[0_0_10px_-4px_var(--accent-primary)] transition hover:bg-accent/90 disabled:opacity-50"
             aria-label="Evolve Pokemon A"
           >
             <Sparkles className="h-3.5 w-3.5" />
@@ -619,7 +620,7 @@ function EncounterCardBody({
               void handleOpenEvolutionMenu("b");
             }}
             disabled={isEvolvingB || evolutionLoadingSlot === "b"}
-            className="absolute -right-2 top-0 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-emerald-500/30 bg-background text-emerald-700 hover:bg-emerald-500/10 disabled:opacity-50 dark:text-emerald-300"
+            className="absolute -right-2 top-0 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full border border-accent bg-accent text-white shadow-[0_0_10px_-4px_var(--accent-primary)] transition hover:bg-accent/90 disabled:opacity-50"
             aria-label="Evolve Pokemon B"
           >
             <Sparkles className="h-3.5 w-3.5" />
@@ -665,7 +666,7 @@ function EncounterCardBody({
             onAction();
           }}
           disabled={isActionPending}
-          className="rounded-md border border-emerald-700 bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-100 dark:hover:bg-emerald-500/30"
+          className="rounded-md border border-accent bg-accent px-2 py-1 text-xs font-semibold text-white transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isFainted ? "Rest in Peace" : actionLabel}
         </button>
@@ -704,7 +705,7 @@ function SortablePartyCard({
       {...(mounted ? attributes : {})}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={onSelect}
-      className={`h-full min-h-[260px] rounded-lg border bg-white/80 dark:bg-slate-950/70 ${encounter.is_fainted ? "border-red-300 grayscale dark:border-red-700/60" : "border-emerald-500/20"} ${isSelected ? "ring-2 ring-accent shadow-[0_0_18px_-12px_rgba(16,185,129,0.2)]" : ""} ${isSwapTarget ? "border-dashed border-emerald-500/70 shadow-[0_0_16px_-10px_rgba(16,185,129,0.28)]" : ""} ${isDragging ? "cursor-grabbing opacity-50 scale-105" : "cursor-grab"}`}
+      className={`h-full min-h-[260px] rounded-lg border bg-white/80 transition-colors dark:bg-slate-950/70 ${encounter.is_fainted ? "border-red-300 grayscale dark:border-red-700/60" : "border-accent/40"} ${isSelected ? "ring-2 ring-accent shadow-[0_0_22px_-10px_var(--accent-primary)]" : ""} ${isSwapTarget ? "border-dashed border-accent shadow-[0_0_18px_-8px_var(--accent-primary)]" : ""} ${isDragging ? "cursor-grabbing opacity-50 scale-105" : "cursor-grab"}`}
     >
       <EncounterCardBody
         encounter={encounter}
@@ -759,22 +760,22 @@ function BoxMiniCard({
 }: BoxMiniCardProps) {
   return (
     <div
-      className={`h-32 rounded-lg border border-slate-200 bg-white/85 p-2 transition duration-150 hover:scale-[1.02] hover:border-emerald-500/35 dark:border-slate-700/70 dark:bg-slate-950/85 ${isSelected ? "ring-2 ring-accent shadow-[0_0_16px_-10px_rgba(16,185,129,0.2)]" : ""} ${isSwapTarget ? "border-dashed border-emerald-500/70 shadow-[0_0_16px_-10px_rgba(16,185,129,0.28)]" : ""} ${isDragging ? "scale-105 opacity-50" : ""}`}
+      className={`h-32 rounded-lg border border-accent/30 bg-white/85 p-2 transition duration-150 hover:scale-[1.02] hover:border-accent/55 dark:bg-slate-950/85 ${isSelected ? "ring-2 ring-accent shadow-[0_0_18px_-10px_var(--accent-primary)]" : ""} ${isSwapTarget ? "border-dashed border-accent shadow-[0_0_18px_-8px_var(--accent-primary)]" : ""} ${isDragging ? "scale-105 opacity-50" : ""}`}
     >
       <div className="mb-2 flex items-center justify-start">
-        <span className="block max-w-full truncate rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] uppercase text-emerald-700 dark:text-emerald-300">
+        <span className="block max-w-full truncate rounded-full border border-accent/30 bg-accent/15 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-accent">
           {encounter.location}
         </span>
       </div>
       <div className="flex items-center justify-center gap-2">
-        <div className="grid h-14 w-14 place-items-center rounded-md border border-emerald-500/20 bg-white dark:bg-slate-900">
+        <div className="grid h-14 w-14 place-items-center rounded-md border border-accent/25 bg-white dark:bg-slate-900">
           {spriteA ? (
             <Image src={spriteA} alt={`${encounter.pokemon_a} sprite`} width={52} height={52} />
           ) : (
             <span className="text-[10px] text-slate-500">N/A</span>
           )}
         </div>
-        <div className="grid h-14 w-14 place-items-center rounded-md border border-emerald-500/20 bg-white dark:bg-slate-900">
+        <div className="grid h-14 w-14 place-items-center rounded-md border border-accent/25 bg-white dark:bg-slate-900">
           {spriteB ? (
             <Image src={spriteB} alt={`${encounter.pokemon_b} sprite`} width={52} height={52} />
           ) : (
@@ -916,9 +917,9 @@ function SortableBoxMiniCard({
 
 function PairDragPreview({ encounter }: { encounter: EncounterRow }) {
   return (
-    <div className="w-[280px] rounded-lg border border-emerald-400/40 bg-white/95 p-3 shadow-[0_14px_40px_-14px_rgba(16,185,129,0.65)] dark:bg-slate-950/95">
+    <div className="w-[280px] rounded-lg border border-accent/60 bg-white/95 p-3 shadow-[0_14px_40px_-10px_var(--accent-primary)] dark:bg-slate-950/95">
       <div className="mb-2 flex items-center justify-between">
-        <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[11px] text-emerald-700 dark:text-emerald-300">
+        <span className="rounded-full border border-accent/30 bg-accent/15 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-accent">
           {encounter.location ?? "Unknown"}
         </span>
       </div>
@@ -947,7 +948,7 @@ function BoxEmptySlot({ index }: { index: number }) {
   return (
     <div
       ref={setNodeRef}
-      className={`grid h-32 place-items-center rounded-lg border border-dashed border-border bg-muted/50 p-4 text-center transition ${isOver ? "border-emerald-500/40 bg-emerald-500/10" : ""}`}
+      className={`grid h-32 place-items-center rounded-lg border border-dashed border-accent/25 bg-accent/[0.04] p-4 text-center transition ${isOver ? "border-accent bg-accent/15 shadow-[0_0_16px_-8px_var(--accent-primary)]" : ""}`}
     >
       <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">EMPTY SLOT</p>
     </div>
@@ -1500,23 +1501,21 @@ export function DashboardContent({ initialEncounters }: DashboardContentProps) {
 
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors">
-      <header className="sticky top-0 z-[60] border-b border-border bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-[60px] w-full max-w-screen-2xl items-center justify-between px-4 md:px-6 xl:px-8">
+      <header className="sticky top-0 z-[60] border-b border-border bg-background">
+        {/*
+        Three-column grid so the Center section stays perfectly centered in the
+        viewport regardless of how wide the Left/Right clusters grow.
+        */}
+        <div className="mx-auto grid h-[60px] w-full max-w-screen-2xl grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 md:px-6 xl:px-8">
+          {/* Left Section: Nuzl brand + session identity + connection actions */}
           <div className="flex items-center gap-2">
             <p className="text-sm font-semibold tracking-wide text-foreground">Nuzl</p>
-            <p className="text-xs text-foreground/70">
+            <span className="hidden text-[10px] text-foreground/70 md:inline">
               {isSessionLoading ? "Loading..." : realtimeConnected ? "Connected" : "Disconnected"}
-            </p>
+            </span>
             <span className="rounded-md border border-accent/40 bg-accent/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-accent">
               {currentSessionId}
             </span>
-            <button
-              type="button"
-              onClick={handleExitSession}
-              className="rounded-md border border-border bg-card px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-foreground/80 hover:bg-muted/60"
-            >
-              Exit Session
-            </button>
             <button
               type="button"
               onClick={() => void handleCopyLink()}
@@ -1524,16 +1523,33 @@ export function DashboardContent({ initialEncounters }: DashboardContentProps) {
             >
               Copy Link
             </button>
+            <button
+              type="button"
+              onClick={handleExitSession}
+              className="rounded-md border border-border bg-card px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-foreground/80 hover:bg-muted/60"
+            >
+              Exit
+            </button>
           </div>
-          <div className="flex items-center gap-2">
-            <VibeToggle />
-            <ModeToggle />
+
+          {/* Center Section: Add Encounter trigger, perfectly centered by 1fr_auto_1fr grid */}
+          <div className="flex items-center justify-center">
             <AddEncounterModal
               sessionId={activeSessionDbId ?? ""}
               onEncounterAdded={(encounter) =>
                 setEncounters((current) => addEncounterOptimistically(current, encounter))
               }
             />
+          </div>
+
+          {/* Right Section: Theme controls (font + accent + mode) */}
+          <div className="flex items-center justify-end gap-2">
+            <span className="hidden text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground sm:inline">
+              Change Theme:
+            </span>
+            <FontToggle />
+            <AccentToggle />
+            <ModeToggle />
           </div>
         </div>
       </header>
@@ -1554,7 +1570,7 @@ export function DashboardContent({ initialEncounters }: DashboardContentProps) {
                   <div>
                     <CardTitle className="text-2xl">Live Team</CardTitle>
                   </div>
-                  <Users className="h-5 w-5 text-emerald-400" />
+                  <Users className="h-5 w-5 text-accent" />
                 </CardHeader>
                 <CardContent>
                   <DroppableGrid
@@ -1590,7 +1606,7 @@ export function DashboardContent({ initialEncounters }: DashboardContentProps) {
                           ) : (
                             <div
                               key={`party-empty-slot-${index}`}
-                              className={`grid h-full min-h-[260px] place-items-center rounded-lg border border-dashed border-border bg-muted/50 p-4 text-center transition ${isOver ? "border-emerald-500/40 bg-emerald-500/10" : ""}`}
+                              className={`grid h-full min-h-[260px] place-items-center rounded-lg border border-dashed border-border bg-muted/50 p-4 text-center transition ${isOver ? "border-accent bg-accent/10 shadow-[0_0_18px_-10px_var(--accent-primary)]" : ""}`}
                             >
                               <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
                                 EMPTY SLOT
@@ -1651,7 +1667,7 @@ export function DashboardContent({ initialEncounters }: DashboardContentProps) {
                         ) : (
                           <div
                             key={`grave-empty-slot-${index}`}
-                            className="grid h-32 place-items-center rounded-lg border border-dashed border-slate-300 bg-slate-100/70 p-4 text-center dark:border-slate-700 dark:bg-slate-900/60"
+                            className="grid h-32 place-items-center rounded-lg border border-dashed border-accent/20 bg-accent/[0.04] p-4 text-center"
                           >
                             <p className="text-xs uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
                               EMPTY SLOT
@@ -1703,7 +1719,7 @@ export function DashboardContent({ initialEncounters }: DashboardContentProps) {
                                 <p className="text-xs text-slate-500 dark:text-slate-400">
                                   Nickname: {selectedPair.nickname_a?.trim() ? selectedPair.nickname_a : "-"}
                                 </p>
-                                <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                                <p className="text-xs font-semibold text-accent">
                                   Ability: {formatAbilityName(selectedPair.ability_a)}
                                 </p>
                               </div>
@@ -1756,7 +1772,7 @@ export function DashboardContent({ initialEncounters }: DashboardContentProps) {
                                 <p className="text-xs text-slate-500 dark:text-slate-400">
                                   Nickname: {selectedPair.nickname_b?.trim() ? selectedPair.nickname_b : "-"}
                                 </p>
-                                <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                                <p className="text-xs font-semibold text-accent">
                                   Ability: {formatAbilityName(selectedPair.ability_b)}
                                 </p>
                               </div>

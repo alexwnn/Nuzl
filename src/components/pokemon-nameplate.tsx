@@ -120,7 +120,7 @@ export function PokemonNameplate({ pokemonName, nickname, ability }: PokemonName
       */}
       <div
         ref={spriteFrameRef}
-        className="relative grid h-20 w-20 place-items-center overflow-hidden rounded-md border border-slate-200 bg-slate-100/50 dark:border-emerald-500/20 dark:bg-slate-900"
+        className="relative grid h-20 w-20 place-items-center overflow-hidden rounded-md border border-accent/25 bg-slate-100/50 dark:bg-slate-900"
       >
         {resolvedSpriteUrl ? (
           <Image
@@ -137,7 +137,7 @@ export function PokemonNameplate({ pokemonName, nickname, ability }: PokemonName
         {toDisplayName(pokemonName)}
       </p>
       <p className="w-full truncate text-[11px] text-slate-400">{nickname ? `"${toDisplayName(nickname)}"` : "-"}</p>
-      <p className="mt-auto w-full truncate text-[11px] text-emerald-300">{formatAbilityName(ability)}</p>
+      <p className="mt-auto w-full truncate text-[11px] font-semibold text-accent">{formatAbilityName(ability)}</p>
     </div>
   );
 }

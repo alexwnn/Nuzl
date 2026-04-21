@@ -13,9 +13,9 @@
   --muted-foreground: #64748b;
   --border: #e2e8f0;        /* slate-200 */
 
-  /* Vibe-controlled tokens. Overridden per [data-vibe="..."] below. */
-  --primary-accent: #10b981;                  /* emerald-500 default */
-  --primary-font: var(--font-geist-sans);     /* sans default */
+  /* Theme-context-controlled tokens. Overridden per [data-font]/[data-accent] below. */
+  --accent-primary: #10b981;                /* emerald-500 default */
+  --app-font: var(--font-geist-sans);       /* sans default */
 }
 
 .dark {
@@ -30,27 +30,73 @@
 }
 
 /*
-Vibe presets: swap --primary-accent + --primary-font so anything using
-`bg-accent` / `border-accent` / `font-sans` retargets automatically without
-JS-side class juggling. Layered *after* :root so they win in source order,
-and they do not touch theme tokens (bg/card/border) so dark/light still work.
+Font vibes: swap --app-font on <html data-font="...">. Every descendant that uses
+the `font-app` / `font-sans` utility (or inherits body font) re-resolves on the next paint.
+All four stacks are loaded by next/font in layout.tsx so switching is instant (no network roundtrip).
 */
-[data-vibe="modern"] {
-  --primary-accent: #10b981;                  /* emerald-500 */
-  --primary-font: var(--font-geist-sans);
+[data-font="modern"] {
+  /* Geist Sans — neutral, sharp, default app voice. */
+  --app-font: var(--font-geist-sans);
 }
 
-[data-vibe="terminal"] {
-  --primary-accent: #22c55e;                  /* neon green-500 */
-  --primary-font: var(--font-geist-mono);
+[data-font="retro"] {
+  /* Press Start 2P — chunky 8-bit pixel feel for the Nuzlocke runbook vibe. */
+  --app-font: var(--font-press-start);
 }
 
-[data-vibe="classic"] {
-  --primary-accent: #b45309;                  /* amber-700 */
-  --primary-font: Georgia, "Times New Roman", serif;
+[data-font="technical"] {
+  /* JetBrains Mono — fixed-width hacker/researcher HUD. */
+  --app-font: var(--font-jetbrains-mono);
 }
 
-/* 3. The theme block is strictly for mapping variables to Tailwind names */
+[data-font="elegant"] {
+  /* Montserrat — geometric, airy, editorial. */
+  --app-font: var(--font-montserrat);
+}
+
+/*
+Accent colors: swap --accent-primary on <html data-accent="...">. Every Tailwind
+utility built from --color-accent (bg-accent, text-accent, border-accent, ring-accent, etc.)
+re-resolves automatically without re-rendering any component.
+Each hex below is hand-picked for contrast against both light slate-50 and dark slate-950.
+*/
+[data-accent="ruby"] {
+  --accent-primary: #dc2626;       /* red-600: deep crimson */
+}
+
+[data-accent="sapphire"] {
+  --accent-primary: #2563eb;       /* blue-600: vivid ultramarine */
+}
+
+[data-accent="emerald"] {
+  --accent-primary: #10b981;       /* emerald-500: classic Nuzl green */
+}
+
+[data-accent="amber"] {
+  --accent-primary: #f59e0b;       /* amber-500: warm signal */
+}
+
+[data-accent="rose"] {
+  --accent-primary: #f43f5e;       /* rose-500: hot pink-red */
+}
+
+[data-accent="amethyst"] {
+  --accent-primary: #9333ea;       /* purple-600: regal violet */
+}
+
+[data-accent="slate"] {
+  --accent-primary: #64748b;       /* slate-500: monochrome stealth mode */
+}
+
+[data-accent="gold"] {
+  --accent-primary: #ca8a04;       /* yellow-600: burnished champion gold */
+}
+
+/*
+3. Theme block — strictly for mapping variables to Tailwind utility names.
+The `inline` modifier keeps the var() reference intact so runtime attribute
+changes on <html> propagate without a style recomputation pass.
+*/
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -59,9 +105,10 @@ and they do not touch theme tokens (bg/card/border) so dark/light still work.
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
-  --color-accent: var(--primary-accent);
+  --color-accent: var(--accent-primary);
 
-  --font-sans: var(--primary-font);
+  --font-app: var(--app-font);
+  --font-sans: var(--app-font);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -70,7 +117,7 @@ and they do not touch theme tokens (bg/card/border) so dark/light still work.
   body {
     background-color: var(--background);
     color: var(--foreground);
-    font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+    font-family: var(--app-font), Arial, Helvetica, sans-serif;
     transition: background-color 0.3s ease, color 0.3s ease, font-family 0.2s ease;
   }
 }
