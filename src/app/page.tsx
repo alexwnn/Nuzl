@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 
@@ -19,6 +20,7 @@ function generateSessionId() {
 
 export default function Home() {
   const router = useRouter();
+  const [joinCode, setJoinCode] = useState("");
 
   return (
     <main className="mx-auto grid min-h-screen w-full max-w-screen-md place-items-center px-6 py-12">
@@ -36,6 +38,26 @@ export default function Home() {
           <Plus className="h-4 w-4" />
           Start New Session
         </button>
+        <div className="mt-4 space-y-2">
+          <input
+            type="text"
+            value={joinCode}
+            onChange={(event) => setJoinCode(event.target.value)}
+            placeholder="Enter session code..."
+            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const normalizedCode = joinCode.trim();
+              if (!normalizedCode) return;
+              router.push(`/session/${encodeURIComponent(normalizedCode)}`);
+            }}
+            className="inline-flex w-full items-center justify-center rounded-xl border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted/60"
+          >
+            Join
+          </button>
+        </div>
       </div>
     </main>
   );

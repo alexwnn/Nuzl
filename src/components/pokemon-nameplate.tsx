@@ -17,8 +17,16 @@ type PokemonNameplateProps = {
 };
 
 type PokeApiPokemon = {
-  sprites: {
-    front_default: string | null;
+  sprites?: {
+    front_default?: string | null;
+    other?: {
+      home?: {
+        front_default?: string | null;
+      };
+      ["official-artwork"]?: {
+        front_default?: string | null;
+      };
+    };
   };
 };
 
@@ -28,7 +36,7 @@ Transformation: Trims and lowercases to make the value API-safe.
 Output: Stable slug used for sprite fetch requests.
 */
 function toSlug(value: string | null) {
-  return value?.trim().toLowerCase() ?? "";
+  return value?.trim().toLowerCase().replaceAll(" ", "-") ?? "";
 }
 
 function toDisplayName(value: string | null | undefined) {
@@ -86,7 +94,12 @@ export function PokemonNameplate({ pokemonName, nickname, ability }: PokemonName
 
         const pokemon: PokeApiPokemon = await response.json();
         if (!controller.signal.aborted) {
-          setSpriteUrl(pokemon.sprites.front_default);
+          setSpriteUrl(
+            pokemon.sprites?.front_default ??
+              pokemon.sprites?.other?.home?.front_default ??
+              pokemon.sprites?.other?.["official-artwork"]?.front_default ??
+              null,
+          );
         }
       } catch {
         if (!controller.signal.aborted) {

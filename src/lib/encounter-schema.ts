@@ -6,7 +6,7 @@ Transformation: Validates and normalizes inputs against the `encounters` table s
 Output: A safe `EncounterInsertInput` object used for typed Supabase inserts.
 */
 export const encounterInsertSchema = z.object({
-  session_id: z.string().uuid("Please select a valid session."),
+  session_id: z.string().trim().min(1, "Please select a valid session."),
   location: z.string().trim().min(1).max(80),
   pokemon_a: z.string().trim().min(1).max(40).transform((value) => value.toLowerCase()),
   nickname_a: z.string().trim().min(1).max(40),

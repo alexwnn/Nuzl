@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
@@ -33,16 +33,15 @@ import { PokemonNameplate } from "@/components/pokemon-nameplate";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatAbilityName } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
-import type { EncounterRow, SessionRow } from "@/lib/database.types";
+import type { EncounterRow } from "@/lib/database.types";
 
 /*
-Input: Initial encounters/sessions loaded server-side on first render.
+Input: Initial encounters loaded server-side on first render.
 Transformation: Holds realtime-aware local state, applies insert/update/delete events, and computes UI metrics.
 Output: Renders the dashboard sections plus Add Encounter engine with immediate UI updates.
 */
 type DashboardContentProps = {
   initialEncounters: EncounterRow[];
-  sessions: SessionRow[];
 };
 
 const PARTY_DROPZONE_ID = "party-dropzone";
@@ -267,7 +266,6 @@ function DroppableGrid({ id, className, children }: DroppableGridProps) {
 
 type EncounterCardProps = {
   encounter: EncounterRow;
-  sessions: SessionRow[];
   actionLabel: "Move to Party" | "Move to Box";
   onAction: () => void;
   onRelease: () => void;
@@ -286,7 +284,6 @@ type EncounterCardProps = {
 
 type EncounterCardBodyProps = {
   encounter: EncounterRow;
-  sessions: SessionRow[];
   actionLabel: "Move to Party" | "Move to Box";
   onAction: () => void;
   onRelease: () => void;
@@ -304,13 +301,27 @@ type EncounterCardBodyProps = {
 const pokemonSpriteCache = new Map<string, string | null>();
 const evolutionOptionsCache = new Map<string, string[]>();
 
+type PokeApiSpritePayload = {
+  sprites?: {
+    front_default?: string | null;
+    other?: {
+      home?: {
+        front_default?: string | null;
+      };
+      ["official-artwork"]?: {
+        front_default?: string | null;
+      };
+    };
+  };
+};
+
 type EvolutionChainNode = {
   species: { name: string };
   evolves_to: EvolutionChainNode[];
 };
 
 function toPokemonSlug(value: string) {
-  return value.trim().toLowerCase();
+  return value.trim().toLowerCase().replaceAll(" ", "-");
 }
 
 async function fetchPokemonSprite(pokemonName: string, signal?: AbortSignal) {
@@ -325,8 +336,12 @@ async function fetchPokemonSprite(pokemonName: string, signal?: AbortSignal) {
     return null;
   }
 
-  const payload = await response.json();
-  const spriteUrl: string | null = payload.sprites.front_default;
+  const payload: PokeApiSpritePayload = await response.json();
+  const spriteUrl: string | null =
+    payload.sprites?.front_default ??
+    payload.sprites?.other?.home?.front_default ??
+    payload.sprites?.other?.["official-artwork"]?.front_default ??
+    null;
   pokemonSpriteCache.set(slug, spriteUrl);
   return spriteUrl;
 }
@@ -382,7 +397,6 @@ async function fetchEvolutionOptions(pokemonName: string) {
 
 function EncounterCardBody({
   encounter,
-  sessions,
   actionLabel,
   onAction,
   onRelease,
@@ -553,7 +567,7 @@ function EncounterCardBody({
           </button>
           <AddEncounterModal
             mode="edit"
-            sessions={sessions}
+            sessionId={encounter.session_id}
             encounter={encounter}
             onEncounterUpdated={onEncounterUpdated}
             trigger={
@@ -660,7 +674,6 @@ function EncounterCardBody({
 
 function SortablePartyCard({
   encounter,
-  sessions,
   actionLabel,
   onAction,
   onRelease,
@@ -693,7 +706,6 @@ function SortablePartyCard({
     >
       <EncounterCardBody
         encounter={encounter}
-        sessions={sessions}
         actionLabel={actionLabel}
         onAction={onAction}
         onRelease={onRelease}
@@ -941,34 +953,6 @@ function BoxEmptySlot({ index }: { index: number }) {
 }
 
 /*
-Input: Current encounter list + a Supabase realtime payload.
-Transformation: Merges change events into local state with immutable updates.
-Output: Returns the next encounter state that drives dashboard rendering.
-*/
-function applyRealtimeChange(
-  current: EncounterRow[],
-  payload: {
-    eventType: "INSERT" | "UPDATE" | "DELETE";
-    new: EncounterRow | null;
-    old: Partial<EncounterRow> | null;
-  },
-) {
-  if (payload.eventType === "INSERT" && payload.new) {
-    return [payload.new, ...current.filter((entry) => entry.id !== payload.new?.id)];
-  }
-
-  if (payload.eventType === "UPDATE" && payload.new) {
-    return current.map((entry) => (entry.id === payload.new?.id ? payload.new : entry));
-  }
-
-  if (payload.eventType === "DELETE" && payload.old?.id) {
-    return current.filter((entry) => entry.id !== payload.old?.id);
-  }
-
-  return current;
-}
-
-/*
 Input: Encounter row from Supabase insert callback.
 Transformation: Adds new encounter to state while preventing duplicate IDs.
 Output: Updated state reflected instantly in stats/team/box cards.
@@ -981,11 +965,14 @@ function updateEncounterOptimistically(current: EncounterRow[], encounter: Encou
   return current.map((entry) => (entry.id === encounter.id ? encounter : entry));
 }
 
-export function DashboardContent({ initialEncounters, sessions }: DashboardContentProps) {
+export function DashboardContent({ initialEncounters }: DashboardContentProps) {
+  const router = useRouter();
   const params = useParams<{ sessionId?: string }>();
+  const rawSessionId = typeof params?.sessionId === "string" ? params.sessionId : null;
+  const sessionId = rawSessionId ? decodeURIComponent(rawSessionId) : null;
   const [encounters, setEncounters] = useState<EncounterRow[]>(initialEncounters);
-  const [sessionOptions, setSessionOptions] = useState<SessionRow[]>(sessions);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [isSessionLoading, setIsSessionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingEncounterIds, setPendingEncounterIds] = useState<string[]>([]);
   const [selectedPairId, setSelectedPairId] = useState<string | null>(null);
@@ -996,23 +983,68 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   const [intelLoading, setIntelLoading] = useState(false);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const [hoveredSwapTargetId, setHoveredSwapTargetId] = useState<string | null>(null);
-  const routeSessionId = typeof params?.sessionId === "string" ? params.sessionId : null;
-  const currentSessionId = routeSessionId ?? sessionOptions[0]?.name ?? "No Session";
+  const previousSessionIdRef = useRef<string | null>(null);
+  const activeSessionDbId = sessionId;
+  const currentSessionId = sessionId ?? "No Session";
+
+  const refreshSessionEncounters = useCallback(async () => {
+    console.log("Current Session ID from URL:", sessionId);
+    if (!sessionId) {
+      setEncounters([]);
+      setIsSessionLoading(false);
+      return;
+    }
+
+    setIsSessionLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("encounters")
+        .select(
+          "id, session_id, location, pokemon_a, nickname_a, ability_a, pokemon_b, nickname_b, ability_b, status, is_in_party, is_fainted, order_index, created_at",
+        )
+        .eq("session_id", sessionId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        setActionError(`Failed to refresh session encounters: ${error.message}`);
+      } else {
+        setEncounters(data ?? []);
+      }
+    } finally {
+      setIsSessionLoading(false);
+    }
+  }, [sessionId]);
 
   useEffect(() => {
+    if (previousSessionIdRef.current && previousSessionIdRef.current !== activeSessionDbId) {
+      setEncounters([]);
+      setSelectedPairId(null);
+      setPairIntel(null);
+      setActiveDragId(null);
+      setHoveredSwapTargetId(null);
+      setActionError(null);
+    }
+    previousSessionIdRef.current = activeSessionDbId;
+  }, [activeSessionDbId]);
+
+  useEffect(() => {
+    if (!activeSessionDbId) {
+      setRealtimeConnected(false);
+      return;
+    }
+
     const channel = supabase
-      .channel("encounters-live-feed")
+      .channel(`encounters-live-feed-${activeSessionDbId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "encounters" },
-        (payload) => {
-          setEncounters((current) =>
-            applyRealtimeChange(current, {
-              eventType: payload.eventType,
-              new: (payload.new as EncounterRow | null) ?? null,
-              old: (payload.old as Partial<EncounterRow> | null) ?? null,
-            }),
-          );
+        {
+          event: "*",
+          schema: "public",
+          table: "encounters",
+          filter: `session_id=eq.${activeSessionDbId}`,
+        },
+        () => {
+          void refreshSessionEncounters();
         },
       )
       .subscribe((status) => {
@@ -1022,7 +1054,11 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, []);
+  }, [activeSessionDbId, refreshSessionEncounters]);
+
+  useEffect(() => {
+    void refreshSessionEncounters();
+  }, [refreshSessionEncounters, sessionId]);
 
   const nonFaintedEncounters = encounters.filter((encounter) => !encounter.is_fainted);
   const fallenEncounters = encounters
@@ -1148,12 +1184,21 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   }
 
   async function persistEncounterLayout(nextPartyIds: string[], nextBoxIds: string[]) {
+    if (!activeSessionDbId) return;
     const updates = [
       ...nextPartyIds.map((id, index) =>
-        supabase.from("encounters").update({ is_in_party: true, order_index: index }).eq("id", id),
+        supabase
+          .from("encounters")
+          .update({ is_in_party: true, order_index: index })
+          .eq("id", id)
+          .eq("session_id", activeSessionDbId),
       ),
       ...nextBoxIds.map((id, index) =>
-        supabase.from("encounters").update({ is_in_party: false, order_index: index }).eq("id", id),
+        supabase
+          .from("encounters")
+          .update({ is_in_party: false, order_index: index })
+          .eq("id", id)
+          .eq("session_id", activeSessionDbId),
       ),
     ];
 
@@ -1211,6 +1256,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   }
 
   async function toggleFainted(encounterId: string) {
+    if (!activeSessionDbId) return;
     if (faintingEncounterIds.includes(encounterId)) return;
     const target = encounters.find((entry) => entry.id === encounterId);
     if (!target) return;
@@ -1231,7 +1277,11 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
       current.map((entry) => (entry.id === encounterId ? { ...entry, ...updatePayload } : entry)),
     );
 
-    const { error } = await supabase.from("encounters").update(updatePayload).eq("id", encounterId);
+    const { error } = await supabase
+      .from("encounters")
+      .update(updatePayload)
+      .eq("id", encounterId)
+      .eq("session_id", activeSessionDbId);
     if (error) {
       setEncounters(previous);
       setActionError(`Failed to update fainted status: ${error.message}`);
@@ -1241,6 +1291,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   }
 
   async function evolveEncounterSlot(encounterId: string, slot: "a" | "b", nextPokemon: string) {
+    if (!activeSessionDbId) return;
     const pendingKey = `${encounterId}:${slot}`;
     if (evolvingSlots.includes(pendingKey)) return;
 
@@ -1258,7 +1309,11 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
       current.map((entry) => (entry.id === encounterId ? { ...entry, ...updatePayload } : entry)),
     );
 
-    const { error } = await supabase.from("encounters").update(updatePayload).eq("id", encounterId);
+    const { error } = await supabase
+      .from("encounters")
+      .update(updatePayload)
+      .eq("id", encounterId)
+      .eq("session_id", activeSessionDbId);
     if (error) {
       setEncounters(previous);
       setActionError(`Failed to evolve Pokemon: ${error.message}`);
@@ -1268,6 +1323,7 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
   }
 
   async function releaseEncounter(encounterId: string) {
+    if (!activeSessionDbId) return;
     if (releasingEncounterIds.includes(encounterId)) return;
     const confirmed = window.confirm("Are you sure you want to release this pair?");
     if (!confirmed) return;
@@ -1278,7 +1334,11 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
     const previous = encounters;
     setEncounters((current) => current.filter((entry) => entry.id !== encounterId));
 
-    const { error } = await supabase.from("encounters").delete().eq("id", encounterId);
+    const { error } = await supabase
+      .from("encounters")
+      .delete()
+      .eq("id", encounterId)
+      .eq("session_id", activeSessionDbId);
     if (error) {
       setEncounters(previous);
       setActionError(`Failed to release pair: ${error.message}`);
@@ -1324,6 +1384,16 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
     } catch {
       toast.error("Failed to copy session link.");
     }
+  }
+
+  function handleExitSession() {
+    setEncounters([]);
+    setSelectedPairId(null);
+    setPairIntel(null);
+    setActiveDragId(null);
+    setHoveredSwapTargetId(null);
+    setActionError(null);
+    router.push("/");
   }
 
   /*
@@ -1433,11 +1503,18 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
           <div className="flex items-center gap-2">
             <p className="text-sm font-semibold tracking-wide text-foreground">Nuzl</p>
             <p className="text-xs text-foreground/70">
-              {realtimeConnected ? "Connected" : "Connecting..."}
+              {isSessionLoading ? "Loading..." : realtimeConnected ? "Connected" : "Disconnected"}
             </p>
             <span className="rounded-md border border-border bg-card px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-foreground/80">
               {currentSessionId}
             </span>
+            <button
+              type="button"
+              onClick={handleExitSession}
+              className="rounded-md border border-border bg-card px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-foreground/80 hover:bg-muted/60"
+            >
+              Exit Session
+            </button>
             <button
               type="button"
               onClick={() => void handleCopyLink()}
@@ -1449,12 +1526,9 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
           <div className="flex items-center gap-2">
             <ModeToggle />
             <AddEncounterModal
-              sessions={sessionOptions}
+              sessionId={activeSessionDbId ?? ""}
               onEncounterAdded={(encounter) =>
                 setEncounters((current) => addEncounterOptimistically(current, encounter))
-              }
-              onSessionAdded={(session) =>
-                setSessionOptions((current) => [session, ...current.filter((item) => item.id !== session.id)])
               }
             />
           </div>
@@ -1491,7 +1565,6 @@ export function DashboardContent({ initialEncounters, sessions }: DashboardConte
                             <SortablePartyCard
                               key={encounter.id}
                               encounter={encounter}
-                              sessions={sessionOptions}
                               actionLabel={encounter.is_fainted ? "Move to Box" : "Move to Box"}
                               onAction={() => void moveEncounter(encounter.id, false)}
                               onRelease={() => void releaseEncounter(encounter.id)}

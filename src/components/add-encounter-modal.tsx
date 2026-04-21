@@ -2,24 +2,23 @@
 
 import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, Plus, X } from "lucide-react";
+import { useParams } from "next/navigation";
 
 import { encounterInsertSchema } from "@/lib/encounter-schema";
-import { sessionInsertSchema } from "@/lib/session-schema";
 import { formatAbilityName } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
-import type { EncounterRow, SessionRow } from "@/lib/database.types";
+import type { EncounterRow } from "@/lib/database.types";
 import { PokemonSearch } from "@/components/pokemon-search";
 
 /*
-Input: Session options and an optional callback from the dashboard state layer.
+Input: Session id and an optional callback from the dashboard state layer.
 Transformation: Captures form values, validates them with the encounter schema, and inserts typed rows into Supabase.
 Output: Emits the inserted encounter to the parent and closes/reset the modal.
 */
 type AddEncounterModalProps = {
-  sessions: SessionRow[];
+  sessionId?: string;
   onEncounterAdded?: (encounter: EncounterRow) => void;
   onEncounterUpdated?: (encounter: EncounterRow) => void;
-  onSessionAdded?: (session: SessionRow) => void;
   mode?: "add" | "edit";
   encounter?: EncounterRow;
   trigger?: ReactNode;
@@ -33,18 +32,9 @@ type AbilityComboboxProps = {
   placeholder: string;
 };
 
-/*
-Input: Session rows from Supabase.
-Transformation: Selects a safe default session id for initial form state.
-Output: Returns a string id used in the controlled select input.
-*/
-function getDefaultSessionId(sessions: SessionRow[]) {
-  return sessions[0] ? String(sessions[0].id) : "";
-}
-
-function createEmptyFormState(sessions: SessionRow[]) {
+function createEmptyFormState(sessionId: string) {
   return {
-    session_id: getDefaultSessionId(sessions),
+    session_id: sessionId,
     location: "",
     pokemon_a: "",
     nickname_a: "",
@@ -168,39 +158,31 @@ function AbilityCombobox({ label, value, options, onChange, placeholder }: Abili
 }
 
 export function AddEncounterModal({
-  sessions,
+  sessionId,
   onEncounterAdded,
   onEncounterUpdated,
-  onSessionAdded,
   mode = "add",
   encounter,
   trigger,
 }: AddEncounterModalProps) {
   const isEditMode = mode === "edit";
+  const params = useParams<{ sessionId?: string }>();
+  const routeSessionId = typeof params?.sessionId === "string" ? decodeURIComponent(params.sessionId) : "";
+  const activeSessionId = (sessionId ?? routeSessionId).trim();
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isCreatingSession, setIsCreatingSession] = useState(false);
-  const [showCreateSessionForm, setShowCreateSessionForm] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [sessionErrorMessage, setSessionErrorMessage] = useState<string | null>(null);
-  const [sessionName, setSessionName] = useState("");
   const [formState, setFormState] = useState(
-    isEditMode && encounter ? createEditFormState(encounter) : createEmptyFormState(sessions),
+    isEditMode && encounter ? createEditFormState(encounter) : createEmptyFormState(activeSessionId),
   );
   const [abilityOptionsA, setAbilityOptionsA] = useState<string[]>([]);
   const [abilityOptionsB, setAbilityOptionsB] = useState<string[]>([]);
-
-  const hasSessions = sessions.length > 0;
-  const sessionPlaceholder = useMemo(
-    () => (hasSessions ? "Choose a session" : "Create a session first"),
-    [hasSessions],
-  );
+  const hasSession = activeSessionId.length > 0;
 
   useEffect(() => {
-    if (!isEditMode && !formState.session_id && hasSessions) {
-      setFormState((state) => ({ ...state, session_id: getDefaultSessionId(sessions) }));
-    }
-  }, [formState.session_id, hasSessions, isEditMode, sessions]);
+    if (isEditMode) return;
+    setFormState((state) => ({ ...state, session_id: activeSessionId }));
+  }, [activeSessionId, isEditMode]);
 
   useEffect(() => {
     if (!isOpen || !isEditMode || !encounter) return;
@@ -244,58 +226,20 @@ export function AddEncounterModal({
   }, []);
 
   /*
-  Input: Raw `sessionName` from the nested "create first session" form.
-  Transformation: Validates with Zod and inserts a new row into `sessions`.
-  Output: Returns a typed `SessionRow`, updates parent session state, and auto-selects `session_id`.
-
-  Foreign key note: `encounters.session_id` references `sessions.id` (encounters_session_id_fkey),
-  so every encounter must point to an existing session before insertion is valid.
-  */
-  async function handleCreateSession() {
-    try {
-      setIsCreatingSession(true);
-      setSessionErrorMessage(null);
-
-      const parsed = sessionInsertSchema.parse({ name: sessionName });
-      const { data, error } = await supabase
-        .from("sessions")
-        .insert(parsed)
-        .select("id, name, created_at")
-        .single();
-
-      if (error) {
-        setSessionErrorMessage(error.message);
-        return;
-      }
-
-      if (data) {
-        onSessionAdded?.(data);
-        setFormState((state) => ({ ...state, session_id: String(data.id) }));
-        setSessionName("");
-        setShowCreateSessionForm(false);
-      }
-    } catch {
-      setSessionErrorMessage("Enter a valid session name.");
-    } finally {
-      setIsCreatingSession(false);
-    }
-  }
-
-  /*
   Input: Submit event from modal form.
   Transformation: Validates with Zod, performs Supabase insert, and handles success/error control flow.
   Output: Sends new encounter to parent callback and updates UI state.
   */
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!hasSessions) return;
+    if (!hasSession) return;
     if (isEditMode && !encounter) return;
 
     try {
       setIsSaving(true);
       setErrorMessage(null);
 
-      const selectedSession = formState.session_id.trim();
+      const selectedSession = activeSessionId;
       const location = formState.location.trim();
       const pokemonA = formState.pokemon_a.trim();
       const nicknameA = formState.nickname_a.trim();
@@ -376,10 +320,15 @@ export function AddEncounterModal({
         */
         const [{ count: partyCount, error: partyCountError }, { count: boxCount, error: boxCountError }] =
           await Promise.all([
-            supabase.from("encounters").select("*", { count: "exact", head: true }).eq("is_in_party", true),
             supabase
               .from("encounters")
               .select("*", { count: "exact", head: true })
+              .eq("session_id", selectedSession)
+              .eq("is_in_party", true),
+            supabase
+              .from("encounters")
+              .select("*", { count: "exact", head: true })
+              .eq("session_id", selectedSession)
               .eq("is_in_party", false)
               .eq("is_fainted", false),
           ]);
@@ -446,6 +395,7 @@ export function AddEncounterModal({
               ability_b: validatedEncounter.ability_b,
             })
             .eq("id", encounter.id)
+            .eq("session_id", selectedSession)
         : supabase.from("encounters").insert(validatedEncounter);
 
       const { data, error } = await query
@@ -468,7 +418,7 @@ export function AddEncounterModal({
       }
 
       if (!isEditMode) {
-        setFormState(createEmptyFormState(sessions));
+        setFormState(createEmptyFormState(activeSessionId));
         setAbilityOptionsA([]);
         setAbilityOptionsB([]);
       }
@@ -534,70 +484,10 @@ export function AddEncounterModal({
             <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="space-y-2">
                 <label className="text-xs uppercase tracking-[0.18em] text-slate-400">Session</label>
-                <select
-                  autoFocus={false}
-                  value={formState.session_id}
-                  onChange={(event) =>
-                    setFormState((state) => ({ ...state, session_id: event.target.value }))
-                  }
-                  disabled={!hasSessions}
-                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none"
-                >
-                  {!hasSessions && <option value="">{sessionPlaceholder}</option>}
-                  {sessions.map((session) => (
-                    <option key={session.id} value={session.id}>
-                      {session.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {!isEditMode && !hasSessions && (
-                <div className="rounded-xl border border-border bg-muted/40 p-3">
-                  {!showCreateSessionForm ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateSessionForm(true)}
-                      className="rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-sm text-emerald-100 hover:bg-emerald-500/25"
-                    >
-                      Create your first Session
-                    </button>
-                  ) : (
-                    <div className="space-y-3">
-                      <label className="block text-xs uppercase tracking-[0.18em] text-slate-400">
-                        Session Name
-                      </label>
-                      <input
-                        type="text"
-                        value={sessionName}
-                        onChange={(event) => setSessionName(event.target.value)}
-                        placeholder="e.g. FireRed Soul Link"
-                        className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground"
-                      />
-                      {sessionErrorMessage && (
-                        <p className="text-sm text-red-300">{sessionErrorMessage}</p>
-                      )}
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void handleCreateSession()}
-                          disabled={isCreatingSession}
-                          className="rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-sm text-emerald-100 hover:bg-emerald-500/25 disabled:opacity-50"
-                        >
-                          {isCreatingSession ? "Creating..." : "Create Session"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowCreateSessionForm(false)}
-                          className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                <div className="w-full rounded-xl border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
+                  {activeSessionId || "No active session"}
                 </div>
-              )}
+              </div>
 
               <div className="space-y-2">
                 <label className="text-xs uppercase tracking-[0.18em] text-slate-400">Location</label>
@@ -684,7 +574,7 @@ export function AddEncounterModal({
               <div className="flex justify-end">
                 <button
                   type="submit"
-                  disabled={!hasSessions || isSaving || !formState.ability_a.trim() || !formState.ability_b.trim()}
+                  disabled={!hasSession || isSaving || !formState.ability_a.trim() || !formState.ability_b.trim()}
                   className="rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25"
                 >
                   {isSaving ? "Saving..." : isEditMode ? "Save Changes" : "Save Encounter"}
