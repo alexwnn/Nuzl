@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import { AddEncounterModal } from "@/components/add-encounter-modal";
 import { ModeToggle } from "@/components/mode-toggle";
 import { PokemonNameplate } from "@/components/pokemon-nameplate";
+import { TeamAnalysis } from "@/components/team-analysis";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatAbilityName } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
@@ -1858,6 +1859,9 @@ export function DashboardContent({ initialEncounters }: DashboardContentProps) {
           {actionError && (
             <p className="mt-3 text-xs text-amber-300">{actionError}</p>
           )}
+          <section className="mt-6">
+            <TeamAnalysis encounters={encounters} />
+          </section>
       </main>
     </div>
   );
