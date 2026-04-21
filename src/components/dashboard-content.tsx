@@ -31,6 +31,7 @@ import { AddEncounterModal } from "@/components/add-encounter-modal";
 import { ModeToggle } from "@/components/mode-toggle";
 import { PokemonNameplate } from "@/components/pokemon-nameplate";
 import { TeamAnalysis } from "@/components/team-analysis";
+import { VibeToggle } from "@/components/vibe-toggle";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatAbilityName } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
@@ -703,7 +704,7 @@ function SortablePartyCard({
       {...(mounted ? attributes : {})}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       onClick={onSelect}
-      className={`h-full min-h-[260px] rounded-lg border bg-white/80 dark:bg-slate-950/70 ${encounter.is_fainted ? "border-red-300 grayscale dark:border-red-700/60" : "border-emerald-500/20"} ${isSelected ? "ring-2 ring-emerald-500 shadow-[0_0_18px_-12px_rgba(16,185,129,0.2)]" : ""} ${isSwapTarget ? "border-dashed border-emerald-500/70 shadow-[0_0_16px_-10px_rgba(16,185,129,0.28)]" : ""} ${isDragging ? "cursor-grabbing opacity-50 scale-105" : "cursor-grab"}`}
+      className={`h-full min-h-[260px] rounded-lg border bg-white/80 dark:bg-slate-950/70 ${encounter.is_fainted ? "border-red-300 grayscale dark:border-red-700/60" : "border-emerald-500/20"} ${isSelected ? "ring-2 ring-accent shadow-[0_0_18px_-12px_rgba(16,185,129,0.2)]" : ""} ${isSwapTarget ? "border-dashed border-emerald-500/70 shadow-[0_0_16px_-10px_rgba(16,185,129,0.28)]" : ""} ${isDragging ? "cursor-grabbing opacity-50 scale-105" : "cursor-grab"}`}
     >
       <EncounterCardBody
         encounter={encounter}
@@ -758,7 +759,7 @@ function BoxMiniCard({
 }: BoxMiniCardProps) {
   return (
     <div
-      className={`h-32 rounded-lg border border-slate-200 bg-white/85 p-2 transition duration-150 hover:scale-[1.02] hover:border-emerald-500/35 dark:border-slate-700/70 dark:bg-slate-950/85 ${isSelected ? "ring-2 ring-emerald-500 shadow-[0_0_16px_-10px_rgba(16,185,129,0.2)]" : ""} ${isSwapTarget ? "border-dashed border-emerald-500/70 shadow-[0_0_16px_-10px_rgba(16,185,129,0.28)]" : ""} ${isDragging ? "scale-105 opacity-50" : ""}`}
+      className={`h-32 rounded-lg border border-slate-200 bg-white/85 p-2 transition duration-150 hover:scale-[1.02] hover:border-emerald-500/35 dark:border-slate-700/70 dark:bg-slate-950/85 ${isSelected ? "ring-2 ring-accent shadow-[0_0_16px_-10px_rgba(16,185,129,0.2)]" : ""} ${isSwapTarget ? "border-dashed border-emerald-500/70 shadow-[0_0_16px_-10px_rgba(16,185,129,0.28)]" : ""} ${isDragging ? "scale-105 opacity-50" : ""}`}
     >
       <div className="mb-2 flex items-center justify-start">
         <span className="block max-w-full truncate rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] uppercase text-emerald-700 dark:text-emerald-300">
@@ -1506,7 +1507,7 @@ export function DashboardContent({ initialEncounters }: DashboardContentProps) {
             <p className="text-xs text-foreground/70">
               {isSessionLoading ? "Loading..." : realtimeConnected ? "Connected" : "Disconnected"}
             </p>
-            <span className="rounded-md border border-border bg-card px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-foreground/80">
+            <span className="rounded-md border border-accent/40 bg-accent/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-accent">
               {currentSessionId}
             </span>
             <button
@@ -1525,6 +1526,7 @@ export function DashboardContent({ initialEncounters }: DashboardContentProps) {
             </button>
           </div>
           <div className="flex items-center gap-2">
+            <VibeToggle />
             <ModeToggle />
             <AddEncounterModal
               sessionId={activeSessionDbId ?? ""}

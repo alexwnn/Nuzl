@@ -452,7 +452,7 @@ export function AddEncounterModal({
         <button
           type="button"
           onClick={() => setIsOpen(true)}
-          className="inline-flex items-center gap-2 rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25"
+          className="inline-flex items-center gap-2 rounded-xl border border-accent bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent/90"
         >
           <Plus className="h-4 w-4" />
           Add Encounter
@@ -575,7 +575,7 @@ export function AddEncounterModal({
                 <button
                   type="submit"
                   disabled={!hasSession || isSaving || !formState.ability_a.trim() || !formState.ability_b.trim()}
-                  className="rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-100 dark:hover:bg-emerald-500/25"
+                  className="rounded-xl border border-accent bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isSaving ? "Saving..." : isEditMode ? "Save Changes" : "Save Encounter"}
                 </button>

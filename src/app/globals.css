@@ -12,7 +12,10 @@
   --muted: #f1f5f9;         /* slate-100 for empty slots */
   --muted-foreground: #64748b;
   --border: #e2e8f0;        /* slate-200 */
-  --accent: #10b981;        /* Emerald 500 */
+
+  /* Vibe-controlled tokens. Overridden per [data-vibe="..."] below. */
+  --primary-accent: #10b981;                  /* emerald-500 default */
+  --primary-font: var(--font-geist-sans);     /* sans default */
 }
 
 .dark {
@@ -24,7 +27,27 @@
   --muted: #1e293b;         /* slate-800 */
   --muted-foreground: #94a3b8;
   --border: #1e293b;
-  --accent: #10b981;
+}
+
+/*
+Vibe presets: swap --primary-accent + --primary-font so anything using
+`bg-accent` / `border-accent` / `font-sans` retargets automatically without
+JS-side class juggling. Layered *after* :root so they win in source order,
+and they do not touch theme tokens (bg/card/border) so dark/light still work.
+*/
+[data-vibe="modern"] {
+  --primary-accent: #10b981;                  /* emerald-500 */
+  --primary-font: var(--font-geist-sans);
+}
+
+[data-vibe="terminal"] {
+  --primary-accent: #22c55e;                  /* neon green-500 */
+  --primary-font: var(--font-geist-mono);
+}
+
+[data-vibe="classic"] {
+  --primary-accent: #b45309;                  /* amber-700 */
+  --primary-font: Georgia, "Times New Roman", serif;
 }
 
 /* 3. The theme block is strictly for mapping variables to Tailwind names */
@@ -36,9 +59,9 @@
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
-  --color-accent: var(--accent);
-  
-  --font-sans: var(--font-geist-sans);
+  --color-accent: var(--primary-accent);
+
+  --font-sans: var(--primary-font);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -48,7 +71,7 @@
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans), Arial, Helvetica, sans-serif;
-    transition: background-color 0.3s ease, color 0.3s ease;
+    transition: background-color 0.3s ease, color 0.3s ease, font-family 0.2s ease;
   }
 }
 
