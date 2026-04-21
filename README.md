@@ -44,10 +44,11 @@ Built for type-safety and low-latency data flow.
 
 ## 04. Interface Showcase
 
+
 | Feature | Description | Preview |
 | :--- | :--- | :--- |
-| **Soul Link Intel** | Real-time analysis of base stats and type effectiveness for active pairs. | **[IMAGE: Intel Card]** |
-| **The PC Box** | Organized storage for backup pairs with 1px industrial grid styling. | **[IMAGE: PC Box]** |
-| **The Graveyard** | Persistent tracking of failed encounters and lost pairs. | **[IMAGE: Graveyard]** |
+| **Soul Link Intel** | Real-time analysis of base stats and type effectiveness for active pairs. |<img width="631" height="1106" alt="Screenshot 2026-04-20 at 8 30 59 PM" src="https://github.com/user-attachments/assets/e97d7620-6951-4400-8271-79adfce5fc47" />|
+| **The PC Box** | Organized storage for backup pairs with 1px industrial grid styling. |<img width="867" height="406" alt="Screenshot 2026-04-20 at 8 31 49 PM" src="https://github.com/user-attachments/assets/f0d8600f-6bac-43a9-b5b4-a396fcdfa740" />|
+| **The Graveyard** | Persistent tracking of failed encounters and lost pairs. |<img width="867" height="268" alt="Screenshot 2026-04-20 at 8 32 46 PM" src="https://github.com/user-attachments/assets/5b5911d8-2d0f-4a4c-895b-34f5c4d0c4d9" />|
 
 ---
