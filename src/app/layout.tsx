@@ -52,6 +52,11 @@ const montserrat = Montserrat({
 export const metadata: Metadata = {
   title: "Nuzl",
   description: "Pokemon Soul Link and Nuzlocke tracker dashboard",
+  icons: {
+    icon: "/icon.png",
+    shortcut: "/icon.png",
+    apple: "/icon.png",
+  },
 };
 
 export default function RootLayout({
